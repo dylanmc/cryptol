@@ -7,6 +7,34 @@
 
 module Salsa20 where
 
+Salsa20 : [64][8] -> [64][8]
+Salsa20 xs = join(ar)
+  where
+    ar = [ wordendianswap (byteify words) | words <- xw + (zs@0xa) ]
+    xw = [ littleendian(xi) | xi <- split xs ]
+    zs = [xw] # [ doubleround(zi) | zi <- zs ]
+
+doubleround : [16][32] -> [16][32]
+doubleround(xs) = rowround(columnround(xs))
+
+rowround : [16][32] -> [16][32]
+rowround [y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15] =
+    [z0, z1, z2, z3, z4, z5, z6, z7, z8, z9, z10, z11, z12, z13, z14, z15]
+  where
+    [ z0,  z1,  z2,  z3] = quarterround [ y0,  y1,  y2,  y3]
+    [ z5,  z6,  z7,  z4] = quarterround [ y5,  y6,  y7,  y4]
+    [z10, z11,  z8,  z9] = quarterround [y10, y11,  y8,  y9]
+    [z15, z12, z13, z14] = quarterround [y15, y12, y13, y14]
+
+columnround : [16][32] -> [16][32]
+columnround [x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15] =
+    [y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15]
+  where
+    [ y0,  y4,  y8, y12] = quarterround [ x0,  x4,  x8, x12]
+    [ y5,  y9, y13,  y1] = quarterround [ x5,  x9, x13,  x1]
+    [y10, y14,  y2,  y6] = quarterround [x10, x14,  x2,  x6]
+    [y15,  y3,  y7, y11] = quarterround [x15,  x3,  x7, x11]
+
 quarterround : [4][32] -> [4][32]
 quarterround [y0, y1, y2, y3] = [z0, z1, z2, z3]
   where
@@ -23,15 +51,6 @@ quarterround_passes_tests =
   (quarterround [0x00000000, 0x00000000, 0x00000000, 0x00000001] == [0x00048044, 0x00000080, 0x00010000, 0x20100001]) &&
   (quarterround [0xe7e8c006, 0xc4f9417d, 0x6479b4b2, 0x68c67137] == [0xe876d72b, 0x9361dfd5, 0xf1460244, 0x948541a3]) &&
   (quarterround [0xd3917c5b, 0x55f1c407, 0x52a58a7a, 0x8f887a3b] == [0x3e2f308c, 0xd90a8f36, 0x6ab2a923, 0x2883524c])
-
-// rowround : [16][32] -> [16][32]
-rowround [y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15] =
-    [z0, z1, z2, z3, z4, z5, z6, z7, z8, z9, z10, z11, z12, z13, z14, z15]
-  where
-    [ z0,  z1,  z2,  z3] = quarterround [ y0,  y1,  y2,  y3]
-    [ z5,  z6,  z7,  z4] = quarterround [ y5,  y6,  y7,  y4]
-    [z10, z11,  z8,  z9] = quarterround [y10, y11,  y8,  y9]
-    [z15, z12, z13, z14] = quarterround [y15, y12, y13, y14]
 
 rowround_passes_tests =
   (rowround [0x00000001, 0x00000000, 0x00000000, 0x00000000,
@@ -57,15 +76,6 @@ rowround_opt ys = join [ (quarterround (yi>>>i))<<<i | yi <- split ys | i <- [0 
 
 rowround_opt_is_rowround ys = rowround ys == rowround_opt ys
 */
-
-columnround : [16][32] -> [16][32]
-columnround [x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15] =
-	 [y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15]
-  where
-    [ y0,  y4,  y8, y12] = quarterround [ x0,  x4,  x8, x12]
-    [ y5,  y9, y13,  y1] = quarterround [ x5,  x9, x13,  x1]
-    [y10, y14,  y2,  y6] = quarterround [x10, x14,  x2,  x6]
-    [y15,  y3,  y7, y11] = quarterround [x15,  x3,  x7, x11]
 
 columnround_passes_tests =
   (columnround [0x00000001, 0x00000000, 0x00000000, 0x00000000,
@@ -95,9 +105,6 @@ columnround_opt_is_columnround xs = columnround xs == columnround_opt xs
 property columnround_is_transpose_of_rowround ys =
   rowround ys == join(transpose(split(columnround(xs))))
   where xs = join(transpose(split(ys)))
-
-doubleround : [16][32] -> [16][32]
-doubleround(xs) = rowround(columnround(xs))
 
 doubleround_passes_tests =
   (doubleround [0x00000001, 0x00000000, 0x00000000, 0x00000000,
@@ -136,13 +143,6 @@ littleendian_inverse : [32] -> [4][8]
 littleendian_inverse b = reverse(split b)
 
 littleendian_is_invertable b = littleendian_inverse(littleendian(b)) == b
-
-Salsa20 : [64][8] -> [64][8]
-Salsa20 xs = join(ar)
-  where
-    ar = [ wordendianswap (byteify words) | words <- xw + (zs@0xa) ]
-    xw = [ littleendian(xi) | xi <- split xs ]
-    zs = [xw] # [ doubleround(zi) | zi <- zs ]
 
 Salsa20_passes_tests =
   (Salsa20 [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
