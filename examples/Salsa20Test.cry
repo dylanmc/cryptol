@@ -1,9 +1,18 @@
+/*
+ * Copyright (c) 2013-2014 Galois, Inc.
+ * Distributed under the terms of the BSD3 license (see LICENSE file)
+ */
+
 module Salsa20Test where
 
 import Salsa20
 
 // The following tests the specification against test vectors from 
 // http://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/full/verified.test-vectors?logsort=rev&rev=210&view=markup
+
+// These versions were editor-munged from the text file.
+// It would be nice to generate a script that
+// transforms them from the URL source-text, for added assurance
 
 Set1Keys =
    [ 0x80000000000000000000000000000000
@@ -26,6 +35,7 @@ s1keys =     [ groupBy`{8} k | k <- Set1Keys ]
 nonces =   [ groupBy`{8}0x0000000000000000 | i <- [0 .. 255] ]
 messages = [ zero:[512][8] | i <- [0 .. 255] ]
 
+// some of the vectors show these particular segments of the output
 extractEcryptVectors s =
     [ s@@[0..63]
     , s@@[192..255]
@@ -218,3 +228,136 @@ set3raw = [ groupBy`{64} (Salsa20_encrypt (k, iv, m))
         ]
 
 property set3_passes_tests = xorVectors set3raw == [groupBy`{8} digest | digest <- set3xorDigests]
+
+// Set 4 tests long message streams
+// The documentation for Set 4 should say that the messages are 2^17 bytes long
+
+Set4Keys =
+  [ 0x0053A6F94C9FF24598EB3E91E4378ADD 
+  , 0x0558ABFE51A4F74A9DF04396E93C8FE2
+  , 0x0A5DB00356A9FC4FA2F5489BEE4194E7
+  , 0x0F62B5085BAE0154A7FA4DA0F34699EC
+  ]
+
+
+s4keys = [ groupBy`{8} key
+         | key <- Set4Keys
+         ]
+
+set4nonces =   [ groupBy`{8}0x0000000000000000 | i <- [0 .. 131071] ]
+
+set4messages = [ zero:[131072][8] | i <- [0 .. 3] ]
+
+set4raw = [ groupBy`{64} (Salsa20_encrypt (k, iv, m))
+        | k <- s4keys
+        | iv <- set4nonces
+        | m <- set4messages
+        ]
+
+set4xorDigests =
+  [ 0x196D1A0977F0585B23367497D449E11DE328ECD944BC133F786348C9591B35B7189CDDD934757ED8F18FBC984DA377A807147F1A6A9A8759FD2A062FD76D275E
+  , 0x2BD4F834BC7B3C128E291B2BCE7DA0A5BA1A17E2785093B7F32B7D605AE63276F8256998EC1E0B5A7FD2D66EE9B0B705E49435EDF8BACE1BE770738A403B8F14
+  , 0xDEEBF1FCF222519E26EC6556EA44908092923B357CB88D1A1C1B03341F5C6A984C70E9DB735377615C0476D46DA9897B48127A0D224241E79FE8CF51B005EF93
+  , 0xD124AA942DC1D54D5B9B4BC6804F9990543EAF31FF441F0CD16B961C817EA4A76AF71F678BBB482052B2BA767B4F9265B65C3D839D182D093B560AEB09184C0C
+  ]
+
+// this property takes a while to check
+property set4_passes_tests = xorVectors set4raw == [groupBy`{8} digest | digest <- set4xorDigests]
+
+// Set 5 tests non-zero IV's
+Set5Keys =
+  [ 0x0000000000000000000000000000000000000000000000000000000000000000
+  | i <- [0 .. 7]
+  ]
+
+Set5Nonces =
+  [ 0x8000000000000000
+  , 0x0040000000000000
+  , 0x0000200000000000
+  , 0x0000001000000000
+  , 0x0000000008000000
+  , 0x0000000000040000
+  , 0x0000000000000200
+  , 0x0000000000000001
+  ]
+
+s5nonces = [ groupBy`{8} nonce | nonce <- Set5Nonces ]
+
+s5keys = [ groupBy`{8} key
+         | key <- Set5Keys
+         ]
+
+set5raw = [ groupBy`{64} (Salsa20_encrypt (k, iv, m))
+        | k <- s5keys
+        | iv <- s5nonces
+        | m <- messages
+        ]
+
+set5xorDigests =
+  [ 0xFE40F57D1586D7664C2FCA5AB10BD7C79DE3234836E76949F9DC01CBFABC6D6C42AB27DDC748B4DF7991092972AB4985CEC19B3E7C2C85D6E25A338DEC288282
+  , 0x17E005D5257D3ECE55DBE678290C9E1FE0D1E18CA8D54F6271E83D1A94580D8A597403F680674F564D130D71111ADD2DA17E21268D5A8407CB2721730776DC94
+  , 0x3191EA19C819BC3382B2C085B709E56954D91532C88F49E77BACCCBCE6312A46A6079A13DF08EFEE0F1A6C95BE79E91987677D1CAAE2E0CE253B3EE47F825EAF
+  , 0x838960663A70C2CACD205BC38D8BCC128438D6A03006727EF1440B1D3C7FD557CC4A02AC9CF7D51DCFE3862ACCDEEEBEB15393EE6D8E4483710932C4B44990B5
+  , 0x8D2110EA7CABD4A3DAEC4768131D8AED9E7E1EB1E1F553F7EE38FB339B6484440F43AB7C7F17BB593BF2CFB53688CC74F00A32117039DA4745F78E66059000E6
+  , 0xBBF40E80EBBCBCC93067CAC497FD4403D1E797AC131A593D06BCA34ED650CB3D70403B26550EBB76E00CE04CB15F28CA99F1700ABBA462F041D474E008488F0D
+  , 0x0094C2C02618E924D6CD7C96CBD6A44A33D3983DEAD3084C1A694490B367CE6D7732300C3BA3848C2EA143031A980BE49C1354A528D1E1E1B1A55AFF18BD0F92
+  , 0x1115D387A0C41A67543BE13DD539AB844D9A2CC98C20BB6E7B092268C060884F53774E3B044C6058B137CCCADF9F702696B3D40DFF3835341E4BF01BDD1C8FB1
+  ]
+
+property set5_passes_tests = xorVectors set5raw == [groupBy`{8} digest | digest <- set5xorDigests]
+
+// Set 6 mixes it all up
+
+Set6Nonces =
+  [ 0x0D74DB42A91077DE
+  , 0x167DE44BB21980E7
+  , 0x1F86ED54BB2289F0
+  , 0x288FF65DC42B92F9
+  ]
+
+Set6Keys =
+  [ 0x0053A6F94C9FF24598EB3E91E4378ADD3083D6297CCF2275C81B6EC11467BA0D
+  , 0x0558ABFE51A4F74A9DF04396E93C8FE23588DB2E81D4277ACD2073C6196CBF12
+  , 0x0A5DB00356A9FC4FA2F5489BEE4194E73A8DE03386D92C7FD22578CB1E71C417
+  , 0x0F62B5085BAE0154A7FA4DA0F34699EC3F92E5388BDE3184D72A7DD02376C91C
+  ]
+
+set6messages = [ zero:[131072][8] | i <- [0 .. 6] ]
+
+s6nonces = [ groupBy`{8} nonce | nonce <- Set6Nonces ]
+
+s6keys = [ groupBy`{8} key
+         | key <- Set6Keys
+         ]
+
+set6raw = [ groupBy`{64} (Salsa20_encrypt (k, iv, m))
+        | k <- s6keys
+        | iv <- s6nonces
+        | m <- set6messages
+        ]
+
+set6xorDigests =
+  [ 0xC349B6A51A3EC9B712EAED3F90D8BCEE69B7628645F251A996F55260C62EF31FD6C6B0AEA94E136C9D984AD2DF3578F78E457527B03A0450580DD874F63B1AB9
+  , 0xC3EAAF32836BACE32D04E1124231EF47E101367D6305413A0EEB07C60698A2876E4D031870A739D6FFDDD208597AFF0A47AC17EDB0167DD67EBA84F1883D4DFD
+  , 0x3CD23C3DC90201ACC0CF49B440B6C417F0DC8D8410A716D5314C059E14B1A8D9A9FB8EA3D9C8DAE12B21402F674AA95C67B1FC514E994C9D3F3A6E41DFF5BBA6
+  , 0xE00EBCCD70D69152725F9987982178A2E2E139C7BCBE04CA8A0E99E318D9AB76F988C8549F75ADD790BA4F81C176DA653C1A043F11A958E169B6D2319F4EEC1A
+  ]
+
+property set6_passes_tests = xorVectors set6raw == [groupBy`{8} digest | digest <- set6xorDigests]
+
+// wrapping it all up:
+
+Salsa20_eCrypt_verbose = [ if passesP then good else bad
+                         | passesP <- [ set1_passes_tests
+                                      , set2_passes_tests
+                                      , set3_passes_tests
+                                      , set4_passes_tests
+                                      , set5_passes_tests
+                                      , set6_passes_tests
+                                      ]
+                         | good <- [ "1 passed", "2 passed", "3 passed", "4 passed", "5 passed", "6 passed" ]
+                         | bad  <- [ "1 failed", "2 failed", "3 failed", "4 failed", "5 failed", "6 failed" ]
+                         ]
+
+Salsa20_eCrypt_passes = set1_passes_tests && set2_passes_tests && set3_passes_tests
+                        && set4_passes_tests && set5_passes_tests && set6_passes_tests
