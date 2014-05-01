@@ -170,9 +170,13 @@ Salsa20_passes_tests =
              69, 144,  51,  57,  29,  29, 150,  26, 150,  30, 235, 249, 190, 163, 251,  48,
              27, 111, 114, 114, 118,  40, 152, 157, 180,  57,  27,  94, 107,  42, 236,  35])
 
-property Salsa20_has_no_collisions x1 x2 = 
+property Salsa20_has_no_collisions x1 x2 =
   if(x1 != x2) then doubleround(x1) != doubleround(x2) else True
 
+split_k : {a} (a >= 1, 2 >= a) => ([16*a][8]) -> ([16][8], [16][8])
+split_k k = if (`a==2) then
+        (k@@[0..15], k!![15, 14 ..0]) else
+        (take`{16}k, take`{16}k)
 
 // Salsa 20 supports two key sizes, [16][8] and [32][8]
 Salsa20_expansion : {a} (a >= 1, 2 >= a) => ([16*a][8], [16][8]) -> [64][8]
@@ -180,12 +184,28 @@ Salsa20_expansion(k, n) = z
   where
     [s0, s1, s2, s3] = split("expand 32-byte k") : [4][4][8]
     [t0, t1, t2, t3] = split("expand 16-byte k") : [4][4][8]
-    x = if(`a == 2) then s0 # (take`{16} k) # s1 # n # s2 # (take`{16} k) # s3
-                    else t0 # (take`{16} k) # t1 # n # t2 # (take`{16} k) # t3
+    (k0, k1) = split_k k
+    x = if(`a == 2) then s0 # k0 # s1 # n # s2 # k1 # s3
+                    else t0 # k0 # t1 # n # t2 # k1 # t3
     z = Salsa20(x)
+
+// Test vectors for expansion function
+k0e = [1 .. 16]:[16][8]
+k1e = [201 .. 216]:[16][8]
+ne  = [101 .. 116]
+
+// copied and pasted from Salsa spec PDF:
+expVector0 = [69, 37, 68, 39, 41, 15,107,193,255,139,122, 6,170,233,217, 98, 89,144,182,106, 21, 51,200, 65,239, 49,222, 34,215,114, 40,126, 104,197, 7,225,197,153, 31, 2,102, 78, 76,176, 84,245,246,184, 177,160,133,130, 6, 72,149,119,192,195,132,236,234,103,246, 74]
+
+expVector1 = [39,173, 46,248, 30,200, 82, 17, 48, 67,254,239, 37, 18, 13,247, 241,200, 61,144, 10, 55, 50,185, 6, 47,246,253,143, 86,187,225, 134, 85,110,246,161,163, 43,235,231, 94,171, 51,145,214,112, 29, 14,232, 5, 16,151,140,183,141,171, 9,122,181,104,182,177,193]
+
+property Salsa_expansion_passes_tests = (Salsa20_expansion(k0e # k1e, ne) == expVector0)
+                                     && (Salsa20_expansion(k0e, ne) == expVector1)
 
 Salsa20_encrypt : {a, b} (a >= 1, 2 >= a, fin b) => ([16*a][8], [8][8], [b][8]) -> [b][8]
 Salsa20_encrypt(k, v, m) = c
-  where 
-    salsa = take`{b} (join [ Salsa20_expansion(k, v#(split i)) | i <- [0, 1 ... ] ])
+  where
+    salsa = take`{b} (join [ Salsa20_expansion(k, v#(reverse(groupBy`{8} i))) 
+                           | i <- [0, 1 ... ]:[_][64] 
+                           ])
     c = m ^ salsa
