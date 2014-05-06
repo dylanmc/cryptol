@@ -12,6 +12,11 @@
     cryptol ChaChaCryptolIETF.md
     Cryptol> AllPropertiesPass
     True
+
+```cryptol
+module ChaCha20 where
+```
+
 --!>
 
 # Abstract
@@ -171,10 +176,12 @@ QUARTERROUND(1,5,9,13) to a state, this means running the quarter
 round operation on the elements marked with an asterisk, while
 leaving the others alone:
 
-|   `0   *a   2   3`
-|   `4   *b   6   7`
-|   `8   *c  10  11`
-|   `12  *d  14  15`
+```example
+0   *a   2   3
+4   *b   6   7
+8   *c  10  11
+12  *d  14  15
+```
 
 Note that this run of quarter round is part of what is called a
 "column round".
@@ -239,20 +246,24 @@ KeyToRows key = [littleendian (split words) | words <- (split key)]
    bits.
 
 ```cryptol
+/*
+    Initial state structure:
+
+    cccccccc  cccccccc  cccccccc  cccccccc
+    kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk
+    kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk
+    bbbbbbbb  nnnnnnnn  nnnnnnnn  nnnnnnnn
+
+    c=constant k=key b=blockcount n=nonce
+*/
+
 NonceToRow : [96] -> [32] -> [4][32]
 NonceToRow n i = [i] # [ littleendian (split words) | words <- groupBy`{32} n ]
 ```
 
-| `cccccccc  cccccccc  cccccccc  cccccccc`
-| `kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk`
-| `kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk`
-| `bbbbbbbb  nnnnnnnn  nnnnnnnn  nnnnnnnn`
-|
-| `c=constant k=key b=blockcount n=nonce`
-
 ```cryptol
 BuildState : ChaChaKey -> [96] -> [32] -> [16][32]
-BuildState key nonce i = split (join (FirstRow # KeyToRows key # (NonceToRow nonce i)))
+BuildState key nonce i = split (join (FirstRow # KeyToRows key # NonceToRow nonce i))
 ```
 
 ChaCha20 runs 20 rounds, alternating between "column" and "diagonal"
@@ -271,7 +282,7 @@ diags  = [ 0, 5, 10, 15,    // round 5 - diagonal round
            3, 4, 9,  14 ]   // round 8
 ```
 
-The Cryptol pattern of using the @@ operator on permutations of the indices of
+The Cryptol pattern of using the `@@` operator on permutations of the indices of
 the matrix creates a new matrix that consists of rows that correspond to the
 quarter-round calls. To restore the element-indices to their original ordering,
 after each application we permute by the inverse permutation. Since the column
@@ -309,13 +320,18 @@ For a test vector, we will use the following inputs to the ChaCha20
 block function:
 
 ```cryptol
-TestKey = 0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+TestKey : ChaChaKey
+TestKey = join
+    [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
+     0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+     0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f]
 ```
 
 The key is a sequence of octets with no particular structure before we copy it
 into the ChaCha state.
 
 ```cryptol
+TestNonce : [96]
 TestNonce = 0x000000090000004a00000000
 ```
 
@@ -400,6 +416,9 @@ ChaCha20ExpandKey : ChaChaKey -> [96] -> [32] -> [inf]ChaChaState
 ChaCha20ExpandKey k n i = [ ToLittleEndian (ChaCha20Block k n j)
                           | j <- ([i ...]:[_][32])
                           ]
+
+ChaCha20EncryptBytes msg k n i= [ m ^ kb | m <- msg | kb <- keystream ] where
+    keystream = groupBy`{8}(join (join (ChaCha20ExpandKey k n i)))
 ```
 
 ### Example and Test Vector for the ChaCha20 Cipher
@@ -518,13 +537,9 @@ property SunscreenKeystream_correct (skref:[skwidth][8]) =
                                     Sunscreen_Key Sunscreen_Nonce 1)))) == skref
 ```
 
-Finally, we XOR the Keystream with the plaintext, yielding the
-Ciphertext:
+We XOR the Keystream with the plaintext, yielding the Ciphertext:
 
 ```cryptol
-ChaCha20EncryptBytes msg k n i= [ m ^ kb | m <- msg | kb <- keystream ] where
-    keystream = groupBy`{8}(join (join (ChaCha20ExpandKey k n i)))
-
 Ciphertext_Sunscreen =
     [0x6e, 0x2e, 0x35, 0x9a, 0x25, 0x68, 0xf9, 0x80, 0x41, 0xba, 0x07,
      0x28, 0xdd, 0x0d, 0x69, 0x81, 0xe9, 0x7e, 0x7a, 0xec, 0x1d, 0x43,
@@ -541,6 +556,16 @@ Ciphertext_Sunscreen =
 property ChaCha_encrypt_sunscreen_correct =
     ChaCha20EncryptBytes Plaintext_Sunscreen Sunscreen_Key Sunscreen_Nonce 1
     == Ciphertext_Sunscreen
+```
+
+Finally, decrypt is the same as encrypt:
+
+```cryptol
+ChaCha20DecryptBytes = ChaCha20EncryptBytes
+
+property Sunscreen_decrypt_correct =
+    ChaCha20DecryptBytes Ciphertext_Sunscreen Sunscreen_Key Sunscreen_Nonce 1
+    == Plaintext_Sunscreen
 
 property AllPropertiesPass =
     ChaChaQuarterround_passes_test && FirstRow_correct && BuildState_correct
@@ -548,6 +573,7 @@ property AllPropertiesPass =
     && SunscreenBuildState2_correct && SunscreenBlock1_correct
     && SunscreenBlock2_correct && SunscreenKeystream_correct SunscreenKeystream
     && ChaCha_encrypt_sunscreen_correct && ChaCha20_test1
+    && Sunscreen_decrypt_correct
 ```
 
 # Acknowledgements
@@ -564,72 +590,74 @@ comments and explanations.
 
 ## Normative References
 
-|   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
-|             Requirement Levels", BCP 14, RFC 2119, March 1997.
+```example
+[RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+         Requirement Levels", BCP 14, RFC 2119, March 1997.
 
-|   [chacha]   Bernstein, D., "ChaCha, a variant of Salsa20", Jan 2008.
+[chacha]   Bernstein, D., "ChaCha, a variant of Salsa20", Jan 2008.
 
-|   [poly1305]
-|             Bernstein, D., "The Poly1305-AES message-authentication
-|             code", Mar 2005.
+[poly1305]
+         Bernstein, D., "The Poly1305-AES message-authentication
+         code", Mar 2005.
+```
 
 ## Informative References
 
-|   [AE]       Bellare, M. and C. Namprempre, "Authenticated Encryption:
-|             Relations among notions and analysis of the generic
-|             composition paradigm",
-|             <http://cseweb.ucsd.edu/~mihir/papers/oem.html>.
+```example
+[AE]       Bellare, M. and C. Namprempre, "Authenticated Encryption:
+           Relations among notions and analysis of the generic
+           composition paradigm",
+           <http://cseweb.ucsd.edu/~mihir/papers/oem.html>.
 
-|   [FIPS-197]
-|             National Institute of Standards and Technology, "Advanced
-|             Encryption Standard (AES)", FIPS PUB 197, November 2001.
+[FIPS-197]
+         National Institute of Standards and Technology, "Advanced
+         Encryption Standard (AES)", FIPS PUB 197, November 2001.
 
-|   [FIPS-46]  National Institute of Standards and Technology, "Data
-|             Encryption Standard", FIPS PUB 46-2, December 1993,
-|             <http://www.itl.nist.gov/fipspubs/fip46-2.htm>.
+[FIPS-46]  National Institute of Standards and Technology, "Data
+           Encryption Standard", FIPS PUB 46-2, December 1993,
+           <http://www.itl.nist.gov/fipspubs/fip46-2.htm>.
 
-|   [NaCl]     Bernstein, D., Lange, T., and P. Schwabe, "NaCl:
-|             Networking and Cryptography library",
-|             <http://nacl.cace-project.eu/index.html>.
+[NaCl]     Bernstein, D., Lange, T., and P. Schwabe, "NaCl:
+           Networking and Cryptography library",
+           <http://nacl.cace-project.eu/index.html>.
 
-|   [RFC5116]  McGrew, D., "An Interface and Algorithms for Authenticated
-|             Encryption", RFC 5116, January 2008.
+[RFC5116]  McGrew, D., "An Interface and Algorithms for Authenticated
+           Encryption", RFC 5116, January 2008.
 
-|   [agl-draft]
-|             Langley, A. and W. Chang, "ChaCha20 and Poly1305 based
-|             Cipher Suites for TLS", draft-agl-tls-chacha20poly1305-04
-|             (work in progress), November 2013.
+[agl-draft]
+         Langley, A. and W. Chang, "ChaCha20 and Poly1305 based
+         Cipher Suites for TLS", draft-agl-tls-chacha20poly1305-04
+         (work in progress), November 2013.
 
-|   [poly1305_donna]
-|             Floodyberry, A., "Poly1305-donna",
-|             <https://github.com/floodyberry/poly1305-donna>.
+[poly1305_donna]
+         Floodyberry, A., "Poly1305-donna",
+         <https://github.com/floodyberry/poly1305-donna>.
 
-|   [standby-cipher]
-|             McGrew, D., Grieco, A., and Y. Sheffer, "Selection of
-|             Future Cryptographic Standards",
-|             draft-mcgrew-standby-cipher (work in progress).
+[standby-cipher]
+         McGrew, D., Grieco, A., and Y. Sheffer, "Selection of
+         Future Cryptographic Standards",
+         draft-mcgrew-standby-cipher (work in progress).
+```
 
 
 Authors' Addresses
 
-|   Yoav Nir
-|   Check Point Software Technologies Ltd.
-|   5 Hasolelim st.
-|   Tel Aviv  6789735
-|   Israel
-|
-|   Email: ynir.ietf@gmail.com
+```verbatim
+Yoav Nir
+Check Point Software Technologies Ltd.
+5 Hasolelim st.
+Tel Aviv  6789735
+Israel
+Email: ynir.ietf@gmail.com
 
+Adam Langley
+Google Inc
+Email: agl@google.com
 
-|   Adam Langley
-|   Google Inc
-|
-|   Email: agl@google.com
-
-|   Dylan McNamee
-|   Galois Inc
-|
-|   Email: dylan@galois.com
+Dylan McNamee
+Galois Inc
+Email: dylan@galois.com
+```
 
 # Appendix: Utility functions
 
