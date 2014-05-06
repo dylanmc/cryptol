@@ -185,9 +185,10 @@ The ChaCha block function transforms a ChaCha state by running
 multiple quarter rounds.
 
 The inputs to ChaCha20 are:
- *  A 256-bit key, treated as a concatenation of 8 32-bit little-endian integers.
- *  A 96-bit nonce, treated as a concatenation of 3 32-bit little-endian integers.
- *  A 32-bit block count parameter, treated as a 32-bit little-endian integer.
+
+ * A 256-bit key, treated as a concatenation of 8 32-bit little-endian integers.
+ * A 96-bit nonce, treated as a concatenation of 3 32-bit little-endian integers.
+ * A 32-bit block count parameter, treated as a 32-bit little-endian integer.
 
 The output is 64 random-looking bytes.
 
@@ -225,6 +226,9 @@ The ChaCha20 as follows:
 Here is the Cryptol code:
 
     FirstRow = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574]
+    property FirstRow_correct = groupBy`{8}(join [ littleendian (split w) | w <- FirstRow ]) 
+                                == "expand 32-byte k"
+
 
     KeyToRows : ChaChaKey -> [8][32]
     KeyToRows key = [littleendian (split words) | words <- (split key)]
