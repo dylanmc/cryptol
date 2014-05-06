@@ -4,13 +4,23 @@
   D. McNamee (Galois, Inc)
 % April 3, 2014
 
+<!--
+    Literate Cryptol ChaCha spec
+    convert to .pdf (or other output formats) with "pandoc" like so:
+    % pandoc --toc -f markdown+lhs ChaChaCryptolIETF.md -o ChaChaCryptolIETF.pdf
+    Load into cryptol and test like so:
+    cryptol ChaChaCryptolIETF.md
+    Cryptol> AllPropertiesPass
+    True
+--!>
+
 # Abstract
 
 This document defines the ChaCha20 stream cipher.  This document does not
 introduce any new crypto, but is meant to serve as a stable reference and an
 implementation guide.  This document is the subset of the ChaCha20/Poly1305
-document (https://tools.ietf.org/html/draft-nir-cfrg-chacha20-poly1305-02) 
-that describes the ChaCha20 cipher. Dylan McNamee added Literate Cryptol 
+document (https://tools.ietf.org/html/draft-nir-cfrg-chacha20-poly1305-02)
+that describes the ChaCha20 cipher. Dylan McNamee added Literate Cryptol
 implementations of the ChaCha20 cipher.
 
 ## Copyright Notice
@@ -213,7 +223,7 @@ property FirstRow_correct = groupBy`{8}(join [ littleendian (split w)
                             == "expand 32-byte k"
 ```
 
- * The next 8 words (4-11) are taken from the 256-bit key by 
+ * The next 8 words (4-11) are taken from the 256-bit key by
    reading the bytes in little-endian order, in 4-byte chunks.
 
 ```cryptol
@@ -221,7 +231,7 @@ KeyToRows : ChaChaKey -> [8][32]
 KeyToRows key = [littleendian (split words) | words <- (split key)]
 ```
 
- * Word 12 is a block counter.  Since each block is 64-byte, 
+ * Word 12 is a block counter.  Since each block is 64-byte,
    a 32-bit word is enough for 256 Gigabytes of data.
  * Words 13-15 are a nonce, which should not be repeated for the same
    key.  The 13th word is the first 32 bits of the input nonce taken
@@ -243,9 +253,6 @@ NonceToRow n i = [i] # [ littleendian (split words) | words <- groupBy`{32} n ]
 ```cryptol
 BuildState : ChaChaKey -> [96] -> [32] -> [16][32]
 BuildState key nonce i = split (join (FirstRow # KeyToRows key # (NonceToRow nonce i)))
-
-littleendian : [4][8] -> [32]
-littleendian b = join(reverse b)
 ```
 
 ChaCha20 runs 20 rounds, alternating between "column" and "diagonal"
@@ -275,7 +282,7 @@ here:
 ```cryptol
 inversePermutation (perms:[a+1]b) = [ indexOf i perms | i <- [ 0 .. a ] ]
 invDiags = inversePermutation diags
-invCols  = inversePermutation columns // which "happens" to be the same as columns
+invCols  = inversePermutation columns // which happens to be the same as columns
 
 ChaChaTwoRounds (xs:ChaChaState) = xs'' where
     xs'  =  join [ChaChaQuarterround x | x <- groupBy`{4}(xs@@columns) ] @@ invCols
@@ -305,7 +312,8 @@ block function:
 TestKey = 0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 ```
 
-The key is a sequence of octets with no particular structure before we copy it into the ChaCha state.
+The key is a sequence of octets with no particular structure before we copy it
+into the ChaCha state.
 
 ```cryptol
 TestNonce = 0x000000090000004a00000000
@@ -354,7 +362,7 @@ ChaCha20_block_1 = [
     0xd19c12b5, 0xb94e16de, 0xe883d0cb, 0x4e3c50a2
     ]
 
-ChaCha20_test1 = ChaCha20Block TestKey TestNonce 1 == ChaCha20_block_1
+property ChaCha20_test1 = ChaCha20Block TestKey TestNonce 1 == ChaCha20_block_1
 ```
 
 ## The ChaCha20 encryption algorithm
@@ -392,9 +400,6 @@ ChaCha20ExpandKey : ChaChaKey -> [96] -> [32] -> [inf]ChaChaState
 ChaCha20ExpandKey k n i = [ ToLittleEndian (ChaCha20Block k n j)
                           | j <- ([i ...]:[_][32])
                           ]
-
-ToLittleEndian : ChaChaState -> ChaChaState
-ToLittleEndian s = [littleendian (split words) | words <- s]
 ```
 
 ### Example and Test Vector for the ChaCha20 Cipher
@@ -403,7 +408,10 @@ For a test vector, we will use the following inputs to the ChaCha20
 block function:
 
 ```cryptol
-Sunscreen_Key = 0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+Sunscreen_Key = join
+    [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
+     0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+     0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f]
 Sunscreen_Nonce = 0x000000000000004a00000000
 Sunscreen_Initial_Counter = 1
 ```
@@ -442,8 +450,8 @@ Sunscreen_State1 = [
     0x00000001,  0x00000000,  0x4a000000,  0x00000000
     ]
 
-property SunscreenBuildState_correct = BuildState Sunscreen_Key Sunscreen_Nonce 1 ==
-    Sunscreen_State1
+property SunscreenBuildState_correct =
+    BuildState Sunscreen_Key Sunscreen_Nonce 1 == Sunscreen_State1
 ```
 
 Second block setup:
@@ -456,8 +464,8 @@ Sunscreen_State2 = [
     0x00000002,  0x00000000,  0x4a000000,  0x00000000
     ]
 
-property SunscreenBuildState2_correct = BuildState Sunscreen_Key Sunscreen_Nonce 2 ==
-    Sunscreen_State2
+property SunscreenBuildState2_correct =
+    BuildState Sunscreen_Key Sunscreen_Nonce 2 == Sunscreen_State2
 ```
 
 First block after block operation:
@@ -470,8 +478,8 @@ SunscreenAfterBlock1 = [
     0x40ba4c79, 0xcd343ec6, 0x4c2c21ea, 0xb7417df0
     ]
 
-property SunscreenBlock1_correct = ChaCha20Block Sunscreen_Key Sunscreen_Nonce 1 
-                                   == SunscreenAfterBlock1
+property SunscreenBlock1_correct =
+    ChaCha20Block Sunscreen_Key Sunscreen_Nonce 1 == SunscreenAfterBlock1
 ```
 
 Second block after block operation:
@@ -484,14 +492,14 @@ SunscreenAfterBlock2 = [
     0x037463f3, 0xa11a2073, 0xe8bcfb88, 0xedc49139
     ]
 
-property SunscreenBlock2_correct = ChaCha20Block Sunscreen_Key Sunscreen_Nonce 2 
-                                   == SunscreenAfterBlock2
+property SunscreenBlock2_correct =
+    ChaCha20Block Sunscreen_Key Sunscreen_Nonce 2 == SunscreenAfterBlock2
 ```
 
 Keystream:
 
 ```cryptol
-SunscreenKeystream = 
+SunscreenKeystream =
     [0x22, 0x4f, 0x51, 0xf3, 0x40, 0x1b, 0xd9, 0xe1, 0x2f, 0xde, 0x27,
      0x6f, 0xb8, 0x63, 0x1d, 0xed, 0x8c, 0x13, 0x1f, 0x82, 0x3d, 0x2c,
      0x06, 0xe2, 0x7e, 0x4f, 0xca, 0xec, 0x9e, 0xf3, 0xcf, 0x78, 0x8a,
@@ -504,8 +512,10 @@ SunscreenKeystream =
      0xda, 0x1a, 0x83, 0x2c, 0x89, 0xc1, 0x67, 0xea, 0xcd, 0x90, 0x1d,
      0x7e, 0x2b, 0xf3, 0x63]
 
-property SunscreenKeystream_correct (skref:[skwidth][8])= take`{skwidth}
-    (groupBy`{8}(join (join(ChaCha20ExpandKey Sunscreen_Key Sunscreen_Nonce 1)))) == skref
+property SunscreenKeystream_correct (skref:[skwidth][8]) =
+    take`{skwidth}
+        (groupBy`{8} (join (join(ChaCha20ExpandKey
+                                    Sunscreen_Key Sunscreen_Nonce 1)))) == skref
 ```
 
 Finally, we XOR the Keystream with the plaintext, yielding the
@@ -514,6 +524,7 @@ Ciphertext:
 ```cryptol
 ChaCha20EncryptBytes msg k n i= [ m ^ kb | m <- msg | kb <- keystream ] where
     keystream = groupBy`{8}(join (join (ChaCha20ExpandKey k n i)))
+
 Ciphertext_Sunscreen =
     [0x6e, 0x2e, 0x35, 0x9a, 0x25, 0x68, 0xf9, 0x80, 0x41, 0xba, 0x07,
      0x28, 0xdd, 0x0d, 0x69, 0x81, 0xe9, 0x7e, 0x7a, 0xec, 0x1d, 0x43,
@@ -527,16 +538,16 @@ Ciphertext_Sunscreen =
      0xbf, 0x74, 0xa3, 0x5b, 0xe6, 0xb4, 0x0b, 0x8e, 0xed, 0xf2, 0x78,
      0x5e, 0x42, 0x87, 0x4d]
 
-property ChaCha_encrypt_sunscreen_correct = 
-    ChaCha20EncryptBytes Plaintext_Sunscreen Sunscreen_Key Sunscreen_Nonce 1 
+property ChaCha_encrypt_sunscreen_correct =
+    ChaCha20EncryptBytes Plaintext_Sunscreen Sunscreen_Key Sunscreen_Nonce 1
     == Ciphertext_Sunscreen
 
-property AllPropertiesPass = 
-    ChaChaQuarterround_passes_test && FirstRow_correct && BuildState_correct 
-    && ChaChaStateAfter20_correct && SunscreenBuildState_correct 
-    && SunscreenBuildState2_correct && SunscreenBlock1_correct 
+property AllPropertiesPass =
+    ChaChaQuarterround_passes_test && FirstRow_correct && BuildState_correct
+    && ChaChaStateAfter20_correct && SunscreenBuildState_correct
+    && SunscreenBuildState2_correct && SunscreenBlock1_correct
     && SunscreenBlock2_correct && SunscreenKeystream_correct SunscreenKeystream
-    && ChaCha_encrypt_sunscreen_correct
+    && ChaCha_encrypt_sunscreen_correct && ChaCha20_test1
 ```
 
 # Acknowledgements
@@ -606,16 +617,21 @@ Authors' Addresses
 |   5 Hasolelim st.
 |   Tel Aviv  6789735
 |   Israel
-
+|
 |   Email: ynir.ietf@gmail.com
 
 
 |   Adam Langley
 |   Google Inc
-
+|
 |   Email: agl@google.com
 
-Utility functions:
+|   Dylan McNamee
+|   Galois Inc
+|
+|   Email: dylan@galois.com
+
+# Appendix: Utility functions
 
 ```cryptol
 indexOf e (xs:[a+1]b) = ixs ! 0 where
@@ -625,5 +641,11 @@ indexOf e (xs:[a+1]b) = ixs ! 0 where
                  | j <- [ 0 .. a ]
                  | old <- ixs
                  ]
+
+ToLittleEndian : ChaChaState -> ChaChaState
+ToLittleEndian s = [littleendian (split words) | words <- s]
+
+littleendian : [4][8] -> [32]
+littleendian b = join(reverse b)
 ```
 
