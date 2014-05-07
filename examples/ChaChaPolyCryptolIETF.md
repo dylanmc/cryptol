@@ -679,11 +679,11 @@ Poly1305 key msg = result where
     lastBlock = zero # 0x01 # (littleendian (drop`{16*floorBlocks} msg))
 ```
 
- * Initialize the accumulator to zero, then for each block
-   * Add this number to the accumulator.
-   * Multiply by "r"
-   * Set the accumulator to the result modulo p.  To summarize: Acc =
-     ((Acc+block)*r) % p.
+ *  Initialize the accumulator to zero, then for each block
+    *  Add this number to the accumulator.
+    *  Multiply by "r"
+    *  Set the accumulator to the result modulo p.  To summarize: Acc =
+       ((Acc+block)*r) % p.
 
 ```cryptol
     accum:[_][136]
@@ -804,6 +804,116 @@ GeneratePolyKeyUsingChaCha k n i = join [littleendian (groupBy`{8}b)
 
 Poly_passes_test = GeneratePolyKeyUsingChaCha PolyKeyTest PolyNonceTest 0 == PolyOutput
 ```
+
+## AEAD Construction
+
+Note: Much of the content of this document, including this AEAD
+construction is taken from Adam Langley's draft ([agl-draft]) for the
+use of these algorithms in TLS.  The AEAD construction described here
+is called AEAD_CHACHA20-POLY1305.
+
+AEAD_CHACHA20-POLY1305 is an authenticated encryption with additional
+data algorithm.  The inputs to AEAD_CHACHA20-POLY1305 are:
+
+ *  A 256-bit key
+ *  A 96-bit nonce - different for each invocation with the same key.
+ *  An arbitrary length plaintext
+ *  Arbitrary length additional data
+
+```cryptol
+AEAD_CHACHA20_POLY1305 : {m, n} (fin m, fin n, 64 >= width m, 64 >= width n)
+                       => [256] -> [96] -> [m][8] -> [n][8] -> [m+n+16][8]
+
+AEAD_CHACHA20_POLY1305 k n p ad = (ad # adlen # ct # ptlen) where
+    ptlen : [8][8]
+    ptlen = groupBy`{8}(littleendian (groupBy`{8}(`n:[64]))) 
+    adlen : [8][8]
+    adlen = groupBy`{8}(littleendian (groupBy`{8}(`m:[64]))) 
+    ct = ChaCha20EncryptBytes p k n 1
+```
+
+The ChaCha20 and Poly1305 primitives are combined into an AEAD that
+takes a 256-bit key and 64-bit IV as follows:
+
+```cryptol
+AEAD : {m, n} (fin m, fin n, 64 >= width m, 64 >= width n)
+     => [256] -> [64] -> ([64]->[96]) -> [m][8] -> [n][8] -> [m+n+16][8]
+
+AEAD key seed nonceFunc plainText additionalData = 
+    (additionalData # adlen # ct # ptlen) where
+```
+
+ *  First the 96-bit nonce is constructed by prepending a 32-bit
+    constant value to the IV.  This could be set to zero, or could be
+    derived from keying material, or could be assigned to a sender.
+    It is up to the specific protocol to define the source for that
+    32-bit value.
+
+```cryptol
+    AeadNonce = nonceFunc seed
+```
+ *  Next, a Poly1305 one-time key is generated from the 256-bit key
+    and nonce using the procedure described in Section 2.6.
+
+```cryptol
+    AeadKey = GeneratePolyKeyUsingChaCha key AeadNonce 0
+```
+
+ *  The ChaCha20 encryption function is called to encrypt the
+    plaintext, using the same key and nonce, and with the initial
+    counter set to 1.
+
+```cryptol
+    ct = ChaCha20EncryptBytes plainText AeadKey AeadNonce 1
+```
+
+ *  The Poly1305 function is called with the Poly1305 key calculated
+    above, and a message constructed as a concatenation of the
+    following:
+    *  The additional data
+    *  The length of the additional data in octets (as a 64-bit
+       little-endian integer).  TBD: bit count rather than octets?
+       network order?
+    *  The ciphertext
+    *  The length of the ciphertext in octets (as a 64-bit little-
+       endian integer).  TBD: bit count rather than octets? network
+       order?
+
+```cryptol
+    ptlen : [8][8]
+    ptlen = groupBy`{8}(littleendian (groupBy`{8}(`n:[64]))) 
+    adlen : [8][8]
+    adlen = groupBy`{8}(littleendian (groupBy`{8}(`m:[64]))) 
+```
+
+Decryption is pretty much the same thing.
+
+```cryptol
+// huh - I don't see how to deal with "additional data" in the decrypt
+```
+
+The output from the AEAD is twofold:
+
+ *  A ciphertext of the same length as the plaintext.
+ *  A 128-bit tag, which is the output of the Poly1305 function.
+
+A few notes about this design:
+
+ 1.  The amount of encrypted data possible in a single invocation is
+     2^32-1 blocks of 64 bytes each, for a total of 247,877,906,880
+     bytes, or nearly 256 GB.  This should be enough for traffic
+     protocols such as IPsec and TLS, but may be too small for file
+     and/or disk encryption.  For such uses, we can return to the
+     original design, reduce the nonce to 64 bits, and use the integer
+     at position 13 as the top 32 bits of a 64-bit block counter,
+     increasing the total message size to over a million petabytes
+     (1,180,591,620,717,411,303,360 bytes to be exact).
+ 2.  Despite the previous item, the ciphertext length field in the
+     construction of the buffer on which Poly1305 runs limits the
+     ciphertext (and hence, the plaintext) size to 2^64 bytes, or
+     sixteen thousand petabytes (18,446,744,073,709,551,616 bytes to
+     be exact).
+
 
 # Acknowledgements
 
