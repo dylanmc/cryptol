@@ -1,11 +1,11 @@
-% ChaCha20 for IETF protocols
+% ChaCha20 and Poly1305 for IETF protocols
 % Y. Nir (Check Point)
   A. Langley (Google Inc)
   D. McNamee (Galois, Inc)
 % April 3, 2014
 
 <!--
-    Literate Cryptol ChaCha spec
+    Literate Cryptol ChaCha/Poly1305 spec
     convert to .pdf (or other output formats) with "pandoc" like so:
     % pandoc --toc -f markdown+lhs ChaChaCryptolIETF.md -o ChaChaCryptolIETF.pdf
     Load into cryptol and test like so:
