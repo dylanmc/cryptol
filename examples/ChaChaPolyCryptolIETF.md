@@ -1,17 +1,3 @@
-<!---
-    Literate Cryptol ChaCha/Poly1305 spec
-    convert to .pdf (or other output formats) with "pandoc" like so:
-    % pandoc --toc -f markdown+lhs ChaChaCryptolIETF.md -o ChaChaCryptolIETF.pdf
-    Load into cryptol and test like so:
-    cryptol ChaChaCryptolIETF.md
-    Cryptol> AllPropertiesPass
-    True
-
-```cryptol
-module ChaCha20 where
-```
---!>
-
 # ChaCha20 and Poly1305 for IETF protocols 
  * Y. Nir (Check Point)
  * A. Langley (Google Inc)
@@ -100,6 +86,8 @@ language convention of zero being the index origin).
 The elements in this vector or matrix are 32-bit unsigned integers.
 
 ```cryptol
+module ChaCha20 where
+
 type ChaChaState = [16][32]
 ```
 
