@@ -1,10 +1,3 @@
-% ChaCha20 and Poly1305 for IETF protocols
-  (Literate Cryptol specification)
-% Y. Nir (Check Point)
-  A. Langley (Google Inc)
-  D. McNamee (Galois, Inc)
-% May 7, 2014
-
 <!--
     Literate Cryptol ChaCha/Poly1305 spec
     convert to .pdf (or other output formats) with "pandoc" like so:
@@ -17,17 +10,29 @@
 ```cryptol
 module ChaCha20 where
 ```
-
 --!>
 
-# Abstract
+# ChaCha20 and Poly1305 for IETF protocols 
+ * Y. Nir (Check Point)
+ * A. Langley (Google Inc)
+ * D. McNamee (Galois, Inc)
 
-This document defines the ChaCha20 stream cipher.  This document does not
-introduce any new crypto, but is meant to serve as a stable reference and an
-implementation guide.  This document is the subset of the ChaCha20/Poly1305
-document (https://tools.ietf.org/html/draft-nir-cfrg-chacha20-poly1305-02)
-that describes the ChaCha20 cipher. Dylan McNamee added Literate Cryptol
-implementations of the ChaCha20 cipher.
+May 8, 2014
+
+## Abstract
+
+This document defines the ChaCha20 stream cipher, as well as the use
+of the Poly1305 authenticator, both as stand-alone algorithms, and as
+a "combined mode", or Authenticated Encryption with Additional Data
+(AEAD) algorithm.
+
+This document does not introduce any new crypto, but is meant to
+serve as a stable reference and an implementation guide.
+
+This document is a translation of the IETF draft document
+draft-nir-cfrg-chacha20-poly1305-02 into "literate Cryptol".
+This document can be loaded and executed by a Cryptol interpreter.
+There is an open source implementation of Cryptol available at http://cryptol.net
 
 ## Copyright Notice
 
@@ -85,12 +90,11 @@ are called "column rounds" while others are called "diagonal rounds".
 Here's a diagram of how matrices relate to vectors (using the C
 language convention of zero being the index origin).
 
-```cryptol
-identity = [
-  0 , 1 ,  2 ,  3,
-  4 , 5 ,  6 ,  7,
-  8 , 9 ,  10,  11,
-  12, 13,  14,  15 ]
+```example
+    0 , 1 ,  2 ,  3,
+    4 , 5 ,  6 ,  7,
+    8 , 9 ,  10,  11,
+    12, 13,  14,  15
 ```
 
 The elements in this vector or matrix are 32-bit unsigned integers.
