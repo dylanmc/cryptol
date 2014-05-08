@@ -1,4 +1,4 @@
-<!--
+<!---
     Literate Cryptol ChaCha/Poly1305 spec
     convert to .pdf (or other output formats) with "pandoc" like so:
     % pandoc --toc -f markdown+lhs ChaChaCryptolIETF.md -o ChaChaCryptolIETF.pdf
