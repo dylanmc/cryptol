@@ -177,7 +177,7 @@ leaving the others alone:
 ```
 
 Note that this run of quarter round is part of what is called a
-"column round".
+"column round". 
 
 ## The ChaCha20 block Function
 
@@ -1224,5 +1224,29 @@ property AllPropertiesPass =
     && Sunscreen_decrypt_correct
     && Poly1305_passes_test
     && AeadDecrypt_correct
+
 ```
+
+Since this file is literate Cryptol, the properties above can be checked
+by loading it into a Cryptol interpreter, and running the AllPropertiesPass
+function, like this:
+
+```example
+$ cryptol ChaChaPolyCryptolIETF.md 
+                        _        _
+   ___ _ __ _   _ _ __ | |_ ___ | |
+  / __| '__| | | | '_ \| __/ _ \| |
+ | (__| |  | |_| | |_) | || (_) | |
+  \___|_|   \__, | .__/ \__\___/|_|
+            |___/|_| version 2.0.0 (62acc96)
+
+Loading module Cryptol
+Loading module ChaCha20
+... a bunch of warnings about the use of ambiguous-width constants
+ChaCha20> AllPropertiesPass 
+True
+```
+This check verifies the implementation of `ChaCha`, `Poly1305` and the `AEAD`
+construction all work with the provided test vectors.
+
 
