@@ -237,18 +237,18 @@ KeyToRows key = [littleendian (split words) | words <- (split key)]
    as a little-endian integer, while the 15th word is the last 32
    bits.
 
+```verbatim
+Initial state structure:
+
+cccccccc  cccccccc  cccccccc  cccccccc
+kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk
+kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk
+bbbbbbbb  nnnnnnnn  nnnnnnnn  nnnnnnnn
+
+c=constant k=key b=blockcount n=nonce
+```
+
 ```cryptol
-/*
-    Initial state structure:
-
-    cccccccc  cccccccc  cccccccc  cccccccc
-    kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk
-    kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk
-    bbbbbbbb  nnnnnnnn  nnnnnnnn  nnnnnnnn
-
-    c=constant k=key b=blockcount n=nonce
-*/
-
 NonceToRow : [96] -> [32] -> [4][32]
 NonceToRow n i = [i] # [ littleendian (split words) | words <- groupBy`{32} n ]
 ```
@@ -810,8 +810,8 @@ data algorithm.  The inputs to AEAD_CHACHA20-POLY1305 are:
 
  *  A 256-bit key
  *  A 96-bit nonce - different for each invocation with the same key.
- *  An arbitrary length plaintext
- *  Arbitrary length additional data
+ *  An arbitrary length plaintext (fewer than 2^64 bytes)
+ *  Arbitrary length additional data (fewer than 2^64 bytes)
 
 ```cryptol
 AEAD_CHACHA20_POLY1305 : {m, n} (fin m, fin n, 64 >= width m, 64 >= width n)
