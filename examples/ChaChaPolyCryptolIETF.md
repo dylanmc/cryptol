@@ -278,7 +278,7 @@ diags  = [ 0, 5, 10, 15,    // round 5 - diagonal round
 The Cryptol pattern of using the `@@` operator on permutations of the indices of
 the matrix creates a new matrix that consists of rows that correspond to the
 quarter-round calls. To restore the element-indices to their original ordering,
-after each application we permute by the inverse permutation. Since the column
+after each application we perform the inverse permutation. Since the column
 round is just a square matrix transposition, it inverts itself, but the
 diagonal round needs to have an inverse permutation calculated, which we do
 here:
@@ -314,10 +314,9 @@ block function:
 
 ```cryptol
 TestKey : ChaChaKey
-TestKey = join
-    [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
-     0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
-     0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f]
+TestKey = join (parseHexString
+    ( "00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f:10:11:12:13:" #
+      "14:15:16:17:18:19:1a:1b:1c:1d:1e:1f.") )
 ```
 
 The key is a sequence of octets with no particular structure before we copy it
@@ -325,7 +324,7 @@ into the ChaCha state.
 
 ```cryptol
 TestNonce : [96]
-TestNonce = 0x000000090000004a00000000
+TestNonce = join (parseHexString "00:00:00:09:00:00:00:4a:00:00:00:00.")
 ```
 
 After setting up the ChaCha state, it looks like this:
@@ -420,11 +419,12 @@ For a test vector, we will use the following inputs to the ChaCha20
 block function:
 
 ```cryptol
-Sunscreen_Key = join
-    [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
-     0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
-     0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f]
-Sunscreen_Nonce = 0x000000000000004a00000000
+Sunscreen_Key = join (parseHexString
+    ( "00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f:10:11:12:13:"
+    # "14:15:16:17:18:19:1a:1b:1c:1d:1e:1f."
+    ) )
+
+Sunscreen_Nonce = join (parseHexString "00:00:00:00:00:00:00:4a:00:00:00:00.")
 Sunscreen_Initial_Counter = 1
 ```
 
@@ -511,18 +511,13 @@ property SunscreenBlock2_correct =
 Keystream:
 
 ```cryptol
-SunscreenKeystream =
-    [0x22, 0x4f, 0x51, 0xf3, 0x40, 0x1b, 0xd9, 0xe1, 0x2f, 0xde, 0x27,
-     0x6f, 0xb8, 0x63, 0x1d, 0xed, 0x8c, 0x13, 0x1f, 0x82, 0x3d, 0x2c,
-     0x06, 0xe2, 0x7e, 0x4f, 0xca, 0xec, 0x9e, 0xf3, 0xcf, 0x78, 0x8a,
-     0x3b, 0x0a, 0xa3, 0x72, 0x60, 0x0a, 0x92, 0xb5, 0x79, 0x74, 0xcd,
-     0xed, 0x2b, 0x93, 0x34, 0x79, 0x4c, 0xba, 0x40, 0xc6, 0x3e, 0x34,
-     0xcd, 0xea, 0x21, 0x2c, 0x4c, 0xf0, 0x7d, 0x41, 0xb7, 0x69, 0xa6,
-     0x74, 0x9f, 0x3f, 0x63, 0x0f, 0x41, 0x22, 0xca, 0xfe, 0x28, 0xec,
-     0x4d, 0xc4, 0x7e, 0x26, 0xd4, 0x34, 0x6d, 0x70, 0xb9, 0x8c, 0x73,
-     0xf3, 0xe9, 0xc5, 0x3a, 0xc4, 0x0c, 0x59, 0x45, 0x39, 0x8b, 0x6e,
-     0xda, 0x1a, 0x83, 0x2c, 0x89, 0xc1, 0x67, 0xea, 0xcd, 0x90, 0x1d,
-     0x7e, 0x2b, 0xf3, 0x63]
+SunscreenKeystream = (parseHexString
+    ( "22:4f:51:f3:40:1b:d9:e1:2f:de:27:6f:b8:63:1d:ed:8c:13:1f:82:3d:2c:06:"
+    # "e2:7e:4f:ca:ec:9e:f3:cf:78:8a:3b:0a:a3:72:60:0a:92:b5:79:74:cd:ed:2b:"
+    # "93:34:79:4c:ba:40:c6:3e:34:cd:ea:21:2c:4c:f0:7d:41:b7:69:a6:74:9f:3f:"
+    # "63:0f:41:22:ca:fe:28:ec:4d:c4:7e:26:d4:34:6d:70:b9:8c:73:f3:e9:c5:3a:"
+    # "c4:0c:59:45:39:8b:6e:da:1a:83:2c:89:c1:67:ea:cd:90:1d:7e:2b:f3:63."
+    ) )
 
 property SunscreenKeystream_correct (skref:[skwidth][8]) =
     take`{skwidth}
@@ -648,8 +643,7 @@ Poly1305 key msg = result where
 
  * Next, divide the message into 16-byte blocks. The last block might be shorter.
  * Read each block as a little-endian number.
- * Prepend a 0x01 byte beyond the number of octets. For a 16-byte block this
-   is equivalent to adding 2^128 to the number. XXX - this is because the number is in big-endian form?
+ * Prepend a 0x01 byte to the sequence of octets.
 
 ```cryptol
     // pad all the blocks uniformly (we'll handle the final block later)
@@ -707,16 +701,17 @@ computeElt a b r p = (drop`{137}bigResult) where
 A simple test vector:
 
 ```cryptol
-Poly1305TestKey = join
-    [0x85, 0xd6, 0xbe, 0x78, 0x57, 0x55, 0x6d, 0x33, 0x7f, 0x44, 0x52,
-     0xfe, 0x42, 0xd5, 0x06, 0xa8, 0x01, 0x03, 0x80, 0x8a, 0xfb, 0x0d,
-     0xb2, 0xfd, 0x4a, 0xbf, 0xf6, 0xaf, 0x41, 0x49, 0xf5, 0x1b]
+Poly1305TestKey = join (parseHexString 
+    ( "85:d6:be:78:57:55:6d:33:7f:44:52:fe:42:d5:06:a8:01:"
+    # "03:80:8a:fb:0d:b2:fd:4a:bf:f6:af:41:49:f5:1b."
+    ) )
 
 Poly1305Message = "Cryptographic Forum Research Group"
 
+Poly1305TestTag = "a8:06:1d:c1:30:51:36:c6:c2:2b:8b:af:0c:01:27:a9."
+
 property Poly1305_passes_test = Poly1305 Poly1305TestKey Poly1305Message ==
-    [ 0xa8, 0x06, 0x1d, 0xc1, 0x30, 0x51, 0x36, 0xc6,
-      0xc2, 0x2b, 0x8b, 0xaf, 0x0c, 0x01, 0x27, 0xa9 ]
+    parseHexString Poly1305TestTag
 ```
 
 ## Generating the Poly1305 key using ChaCha20
@@ -847,11 +842,11 @@ takes a 256-bit key and 64-bit IV as follows:
 ```
 
  *  The ChaCha20 encryption function is called to encrypt the
-    plaintext, using the same key and nonce, and with the initial
+    plaintext, using the input key and nonce, and with the initial
     counter set to 1.
 
 ```cryptol
-    ct = ChaCha20EncryptBytes p k AeadNonce 1 // XXX "same key" -> k or PolyKey?
+    ct = ChaCha20EncryptBytes p k AeadNonce 1 
 ```
 
  *  The tag is computed by calling the Poly1305 function with
@@ -1215,13 +1210,33 @@ ToLittleEndian s = [littleendian (split words) | words <- s]
 littleendian : {a}(fin a) => [a][8] -> [a*8]
 littleendian b = join(reverse b)
 
+// Converts a bytestring encoded like "fe:ed:fa:ce." into a sequence of bytes
+// Note: the trailing punctuation is needed
+parseHexString : {n} (fin n) => [3*n][8] -> [n][8]
+parseHexString hexString = [ charsToByte (take`{2} cs) | cs <- groupBy`{3} hexString ] where
+    charsToByte : [2][8] -> [8]
+    charsToByte [ ub, lb ] = (charToByte ub) << 4 || (charToByte lb)
+    charToByte c = if c >= '0' && c <= '9' then c-'0'
+                   | c >= 'a' && c <= 'f' then 10+(c-'a')
+                   else 0     // error case
+
+property parseHexString_check =
+    join (parseHexString
+        ("00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f:10:11:12:13:" #
+         "14:15:16:17:18:19:1a:1b:1c:1d:1e:1f.")) ==
+    0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+
+
 property AllPropertiesPass =
     ChaChaQuarterround_passes_test && FirstRow_correct && BuildState_correct
     && ChaChaStateAfter20_correct && SunscreenBuildState_correct
     && SunscreenBuildState2_correct && SunscreenBlock1_correct
-    && SunscreenBlock2_correct && SunscreenKeystream_correct SunscreenKeystream
-    && ChaCha_encrypt_sunscreen_correct && ChaCha20_test1
+    && SunscreenBlock2_correct
+    && SunscreenKeystream_correct SunscreenKeystream
+    && ChaCha_encrypt_sunscreen_correct
+    && ChaCha20_test1
     && Sunscreen_decrypt_correct
+    && parseHexString_check
     && Poly1305_passes_test
     && AeadDecrypt_correct
 
