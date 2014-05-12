@@ -1024,8 +1024,8 @@ Tag:
 ```cryptol
 property AeadDecrypt_correct = ptGood && isValid where
     (pt,isValid) = AEAD_CHACHA20_POLY1305_DECRYPT AeadKey AeadIV AeadC cypherText AeadAAD
-    cypherText = (AEAD_CHACHA20_POLY1305 AeadKey AeadIV AeadC AeadPt AeadAAD)
-    ptGood = AeadPt == pt
+    cypherText   = (AEAD_CHACHA20_POLY1305 AeadKey AeadIV AeadC AeadPt AeadAAD)
+    ptGood       = AeadPt == pt
 ```
 
 # Implementation Advice
@@ -1232,10 +1232,8 @@ property AllPropertiesPass =
     && SunscreenBuildState2_correct && SunscreenBlock1_correct
     && SunscreenBlock2_correct
     && SunscreenKeystream_correct SunscreenKeystream
-    && ChaCha_encrypt_sunscreen_correct
-    && ChaCha20_test1
-    && Sunscreen_decrypt_correct
-    && parseHexString_check
+    && ChaCha_encrypt_sunscreen_correct && ChaCha20_test1
+    && Sunscreen_decrypt_correct && parseHexString_check
     && Poly1305_passes_test
     && AeadDecrypt_correct
 
