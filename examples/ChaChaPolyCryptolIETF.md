@@ -51,16 +51,15 @@ cipher in greater detail.
 
 This document defines such a standby cipher.  We use ChaCha20
 ([chacha]) with or without the Poly1305 ([poly1305]) authenticator.
-This algorithm is not just fast and secure.  It is fast even if
+These algorithms are not just fast and secure.  They are fast even if
 software-only C-language implementations, allowing for much quicker
 deployment when compared with algorithms such as AES that are
 significantly accelerated by hardware implementations.
 
-These document does not introduce this new algorithm.  It has
-been defined in scientific papers by D. J. Bernstein, which are
-referenced by this document.  The purpose of this document is to
-serve as a stable reference for IETF documents making use of these
-algorithms.
+This document does not introduce any new algorithms.  ChaCha20 and Poly1305
+have been defined in scientific papers by D. J. Bernstein, which are referenced
+by this document.  The purpose of this document is to serve as a stable
+reference for IETF documents making use of these algorithms.
 
 ## Conventions Used in This Document
 
@@ -91,9 +90,9 @@ module ChaCha20 where
 type ChaChaState = [16][32]
 ```
 
-The algorithm name is "ChaCha".  "ChaCha20" is a specific instance
-where 20 "rounds" (or 80 quarter rounds - see Section 2.1) are used.
-Other variations are defined, with 8 or 12 rounds, but in this
+The algorithm name is "ChaCha".  "ChaCha20" is a specific instance where
+20 "rounds" (or 80 quarter rounds - see "The ChaCha Quarter Round", below)
+are used.  Other variations are defined, with 8 or 12 rounds, but in this
 document we only describe the 20-round ChaCha, so the names "ChaCha"
 and "ChaCha20" will be used interchangeably.
 
@@ -605,8 +604,8 @@ Poly1305_clamp r = [ re && mask | re <- r | mask <- PolyMasks ]
 
 The "s" should be unpredictable, but it is perfectly acceptable to
 generate both "r" and "s" uniquely each time.  Because each of them
-is 128-bit, pseudo-randomly generating them (see Section 2.6) is also
-acceptable.
+is 128-bit, pseudo-randomly generating them (see "Generating the
+Poly1305 key using ChaCha20") is also acceptable.
 
 The inputs to Poly1305 are:
 
