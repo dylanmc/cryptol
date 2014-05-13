@@ -658,10 +658,10 @@ Poly1305 key msg = result where
 ```
 
  *  Initialize the accumulator to zero, then for each block
-    *  Add this number to the accumulator.
+    *  Add the current block to the accumulator.
     *  Multiply by "r"
-    *  Set the accumulator to the result modulo p.  To summarize: Acc =
-       ((Acc+block)*r) % p.
+    *  Set the accumulator to the result modulo p.  To summarize: 
+       ``accum[i+1] = ((accum[i]+block)*r) % p``.
 
 ```cryptol
     accum:[_][136]
