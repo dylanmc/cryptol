@@ -1,0 +1,153 @@
+// Specification of the Keccak (SHA-3) hash function
+// Author: David Lazar - translated to Cryptol v2 by others
+
+module Keccak where
+
+type r = 1088
+type c = 544
+type n = 256
+
+SHA_3 M = take`{n}(Keccak M)
+
+// from Lazar's tests.cry
+// t07 = take`{n}(Keccak 0x00) == md 0xC5D2460186F7233C927E7DB2DCC703C0E500B653CA82273B7BFAD8045D85A470
+md : {x} (fin x) => [8*x] -> [8*x]
+md x = join(reverse(groupBy`{8} x))
+
+/*
+SHA_3_224 M = take`{224}(Keccak`{c = 448} M)
+SHA_3_256 M = take`{256}(Keccak`{r = 1088, c = 512} M)
+SHA_3_384 M = take`{384}(Keccak`{r = 832, c = 768} M)
+SHA_3_512 M = take`{512}(Keccak`{r = 576, c = 1024} M)
+*/
+
+Keccak : {msgLen,contentLen,numBlocks,padding,headerLen,remainder}
+     ( fin msgLen
+     , headerLen  == 2
+     , contentLen == msgLen + headerLen
+     , numBlocks  == (contentLen+(r-1)) / r // ceiling division
+     , remainder  == contentLen % r
+     , padding    == (r - remainder) % r
+     , msgLen == r * numBlocks - (2 + padding)
+     , 25 * ((contentLen + r) / 25) >= r
+     , 64 >= (contentLen + r) / 25
+     ) => [msgLen] -> [inf]
+
+Keccak M = squeeze (absorb`{(r + contentLen) / 25} Ps)
+    where
+      Ps = pad M
+
+squeeze : {w} (fin w, 64 >= w, r >= 0, 25 * w >= r, w >= 1) =>
+          [5][5][w] -> [inf]
+squeeze A = (take`{r} (flatten A)) # (squeeze (Keccak_f A))
+
+absorb : {w, n} (fin w, fin n, 64 >= w, 25 * w >= r) =>
+         [n][r] -> [5][5][w]
+absorb Ps =
+    as ! 0
+    where
+      as =
+          (zero:[1][5][5][w]) #
+          [Keccak_f`{w} (s ^ unflatten p) | s <- as
+                                          | p <- Ps]
+
+
+// As of May 2014, Cryptol v2's constraint solver needs the 
+// "r" to be a constant. v1 could handle parameterized blocks - see Lazar's keccak
+pad : {msgLen,contentLen,numBlocks,padding,headerLen,remainder}
+     ( fin msgLen
+     , headerLen  == 2
+     , contentLen == msgLen + headerLen
+     , numBlocks  == (contentLen+(r-1)) / r     // ceiling division
+     , remainder  == contentLen % r
+     , padding    == ((r - remainder) % r) % r
+     )
+     => [msgLen] -> [numBlocks][r]
+pad M = split (M # [True] # (zero:[padding]) # [True])
+
+Keccak_f : {w, b} (fin w, w >= 1, b == 25 * w, 64 >= w) =>
+           [5][5][w] -> [5][5][w]
+Keccak_f A =
+    rounds ! 0
+    where
+      rounds =
+          [A] #
+          [Round RC Ar | RC <- RCs`{w = w}
+                       | Ar <- rounds]
+
+
+Round : {w} (fin w) => [5][5][w] -> [5][5][w] -> [5][5][w]
+Round RC A = ι RC (χ (π (ρ (θ A))))
+
+θ : {w} (fin w) => [5][5][w] -> [5][5][w]
+θ A =
+    A'
+    where
+      C = [xor a | a <- A]
+      D = [C @ x ^ C @ y <<< 1 | x <- [0 .. 4] >>> 1
+                               | y <- [0 .. 4] <<< 1]
+      A' = [[a ^ D @ x | a <- A @ x] | x <- [0 .. 4]]
+
+ρ : {w} (fin w) => [5][5][w] -> [5][5][w]
+ρ A =
+    groupBy`{5}
+             [a <<< r | a <- join A
+                      | r <- R]
+    where
+      R = [0, 36, 3, 41, 18, 1, 44, 10, 45, 2, 62, 6, 43, 15, 61, 28, 55,
+           25, 21, 56, 27, 20, 39, 8, 14]
+
+π : {w} (fin w) => [5][5][w] -> [5][5][w]
+π A =
+    groupBy`{5}
+             [A @ ((x + (3 : [8]) * y) % 5) @ x | x <- [0 .. 4], y <- [0 .. 4]]
+
+χ : {w} (fin w) => [5][5][w] -> [5][5][w]
+χ A =
+    groupBy`{5}
+             [A @ x @ y ^
+              ~A @ ((x + 1) % 5) @ y && A @ ((x + 2) % 5) @ y | x <- [0 .. 4],
+                                                                y <- [0 .. 4]]
+
+ι : {w} (fin w) => [5][5][w] -> [5][5][w] -> [5][5][w]
+ι RC A = A ^ RC
+
+RCs : {w, n} (fin w, fin n, w >= 1, 24 >= n, n == 12 + 2 * lg2 w) => [n][5][5][w]
+RCs =
+    [[[RC @@ [0 .. w - 1]] # zero] # zero | RC <- RCs64
+                                          | _ <- [1 .. n]]
+RCs' : {w, n} (fin w, fin n, w >= 1, 24 >= n, n == 12 + 2 * lg2 w) => [n][5][5][w]
+RCs' =
+    [[[take`{w}RC | RC <- RCs64
+                  | _ <- [1 .. n]]
+
+RCs64 : [24][64]
+RCs64 =
+    join (transpose [[0x0000000000000001, 0x000000008000808B],
+                     [0x0000000000008082, 0x800000000000008B],
+                     [0x800000000000808A, 0x8000000000008089],
+                     [0x8000000080008000, 0x8000000000008003],
+                     [0x000000000000808B, 0x8000000000008002],
+                     [0x0000000080000001, 0x8000000000000080],
+                     [0x8000000080008081, 0x000000000000800A],
+                     [0x8000000000008009, 0x800000008000000A],
+                     [0x000000000000008A, 0x8000000080008081],
+                     [0x0000000000000088, 0x8000000000008080],
+                     [0x0000000080008009, 0x0000000080000001],
+                     [0x000000008000000A, 0x8000000080008008]])
+
+
+xor : {a, b} (fin a) => [a][b] -> [b]
+xor xs =
+    xors ! 0
+    where
+      xors =
+          [0] #
+          [x ^ z | x <- xs
+                 | z <- xors]
+
+flatten : {w} [5][5][w] -> [5 * 5 * w]
+flatten A = join (join (transpose A))
+
+unflatten : {w} (25*w >= r, w >= 1) => [r] -> [5][5][w]
+unflatten p = transpose (groupBy`{5} (groupBy`{w} (p # zero)))

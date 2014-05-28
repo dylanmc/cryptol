@@ -1,0 +1,5 @@
+https://github.com/davidlazar/keccak-cryptol
+
+http://plaintext.crypto.lo.gy/en/article/495/untwisted-a-cryptol-implementation-of-keccak-part-1
+
+
