@@ -3,7 +3,7 @@
  * A. Langley (Google Inc)
  * D. McNamee (Galois, Inc)
 
-May 8, 2014
+July 28, 2014
 
 ## Abstract
 
@@ -15,8 +15,8 @@ a "combined mode", or Authenticated Encryption with Additional Data
 This document does not introduce any new crypto, but is meant to
 serve as a stable reference and an implementation guide.
 
-This document is a translation of the IETF draft document
-draft-nir-cfrg-chacha20-poly1305-02 into "literate Cryptol".
+This version of the document is a translation of the IETF draft document
+draft-irtf-cfrg-chacha20-poly1305 into "literate Cryptol".
 This document can be loaded and executed by a Cryptol interpreter.
 There is an open source implementation of Cryptol available at http://cryptol.net
 
@@ -40,7 +40,7 @@ implementation, and hardware support allow for high performance in
 many areas.  On most modern platforms, AES is anywhere from 4x to 10x
 as fast as the previous most-used cipher, 3-key Data Encryption
 Standard (3DES - [FIPS-46]), which makes it not only the best choice,
-but the only choice.
+but the only practical choice.
 
 The problem is that if future advances in cryptanalysis reveal a
 weakness in AES, users will be in an unenviable position.  With the
@@ -51,15 +51,20 @@ cipher in greater detail.
 
 This document defines such a standby cipher.  We use ChaCha20
 ([chacha]) with or without the Poly1305 ([poly1305]) authenticator.
-These algorithms are not just fast and secure.  They are fast even if
-software-only C-language implementations, allowing for much quicker
-deployment when compared with algorithms such as AES that are
-significantly accelerated by hardware implementations.
+These algorithms are not just fast.  They are fast even in software-
+only C-language implementations, allowing for much quicker deployment
+when compared with algorithms such as AES that are significantly
+accelerated by hardware implementations.
 
-This document does not introduce any new algorithms.  ChaCha20 and Poly1305
-have been defined in scientific papers by D. J. Bernstein, which are referenced
-by this document.  The purpose of this document is to serve as a stable
-reference for IETF documents making use of these algorithms.
+This document does not introduce these new algorithms.  They have
+been defined in scientific papers by D. J. Bernstein, which are
+referenced by this document.  The purpose of this document is to
+serve as a stable reference for IETF documents making use of these
+algorithms.
+
+These algorithms have undergone rigorous analysis.  Several papers
+discuss the security of Salsa and ChaCha ([LatinDances],
+[Zhenqing2012]).
 
 ## Conventions Used in This Document
 
@@ -98,7 +103,8 @@ and "ChaCha20" will be used interchangeably.
 
 # The Algorithms
 
-The subsections below describe the algorithms used.
+The subsections below describe the algorithms used and the AEAD
+construction.
 
 ## The ChaCha Quarter Round
 
@@ -137,7 +143,6 @@ first two lines with sample numbers:
 
 For a test vector, we will use the same numbers as in the example,
 adding something random for c.
-
 
 After running a Quarter Round on these 4 numbers, we get these:
 
@@ -178,6 +183,54 @@ leaving the others alone:
 Note that this run of quarter round is part of what is called a
 "column round". 
 
+### Test Vector for the Quarter Round on the ChaCha state
+
+For a test vector, we will use a ChaCha state that was generated
+randomly:
+
+Sample ChaCha State
+
+```example
+   879531e0  c5ecf37d  516461b1  c9a62f8a
+   44c20ef3  3390af7f  d9fc690b  2a5f714c
+   53372767  b00a5631  974c541a  359e9963
+   5c971061  3d631689  2098d9d6  91dbd320
+```
+We will apply the QUARTERROUND(2,7,8,13) operation to this state.
+For obvious reasons, this one is part of what is called a "diagonal
+round":
+
+After applying QUARTERROUND(2,7,8,13)
+
+```example
+   879531e0  c5ecf37d  bdb886dc  c9a62f8a
+   44c20ef3  3390af7f  d9fc690b  cfacafd2
+   e46bea80  b00a5631  974c541a  359e9963
+   5c971061  ccc07c79  2098d9d6  91dbd320
+```
+
+Note that only the numbers in positions 2, 7, 8, and 13 changed.
+
+In the Cryptol implementation of ChaCha20, the ChaChaQuarterround is called on four elements at a time, 
+and there is no destructive state modification, so it would be artificial to reproduce the 
+above example of the partially-destructively modified matrix. Instead, we show the output of
+calling ChaChaQuarterround on the diagonal elements identified above:
+
+```cryptol
+property ChaChaQuarterround_passes_column_test =
+    ChaChaQuarterround [ 0x516461b1 // a
+                       , 0x2a5f714c // b
+                       , 0x53372767 // c
+                       , 0x3d631689 // d
+                       ]
+    ==
+                       [ 0xbdb886dc
+                       , 0xcfacafd2
+                       , 0xe46bea80
+                       , 0xccc07c79
+                       ]
+```
+
 ## The ChaCha20 block Function
 
 The ChaCha block function transforms a ChaCha state by running
@@ -191,6 +244,10 @@ The inputs to ChaCha20 are:
 
 The output is 64 random-looking bytes.
 
+```cryptol
+ChaCha20Block : ChaChaKey -> [96] -> [32] -> ChaChaState
+```
+
 The ChaCha algorithm described here uses a 256-bit key.  The original
 algorithm also specified 128-bit keys and 8- and 12-round variants,
 but these are out of scope for this document.  In this section we
@@ -202,7 +259,7 @@ type ChaChaKey = [256]
 
 Note also that the original ChaCha had a 64-bit nonce and 64-bit
 block count.  We have modified this here to be more consistent with
-recommendations in section 3.2 of [RFC5116].  This limits the use of
+recommendations in section 3.2 of [RFC5116].  This limits the use of
 a single (key,nonce) combination to 2^32 blocks, or 256 GB, but that
 is enough for most uses.  In cases where a single key is used by
 multiple senders, it is important to make sure that they don't use
@@ -210,7 +267,7 @@ the same nonces.  This can be assured by partitioning the nonce space
 so that the first 32 bits are unique per sender, while the other 64
 bits come from a counter.
 
-The ChaCha20 as follows:
+The ChaCha20 state is initialized as follows:
 
  * The first 4 words (0-3) are constants: 0x61707865, 0x3320646e,
    0x79622d32, 0x6b206574.
@@ -301,7 +358,7 @@ output words, and the result is serialized by sequencing the words
 one-by-one in little-endian order.
 
 ```cryptol
-ChaCha20Block : ChaChaKey -> [96] -> [32] -> ChaChaState
+// ChaCha20Block : ChaChaKey -> [96] -> [32] -> ChaChaState (repeated from above)
 ChaCha20Block key nonce i = (ChaCha initialState 10) + initialState where
     initialState = BuildState key nonce i
 ```
@@ -379,15 +436,18 @@ refinement of the Salsa20 algorithm, and uses a 256-bit key.
 
 ChaCha20 successively calls the ChaCha20 block function, with the
 same key and nonce, and with successively increasing block counter
-parameters.  The resulting state is then serialized by writing the
-numbers in little-endian order.  Concatenating the results from the
-successive blocks forms a key stream, which is then XOR-ed with the
-plaintext.  There is no requirement for the plaintext to be an
-integral multiple of 512-bits.  If there is extra keystream from the
-last block, it is discarded.  Specific protocols MAY require that the
-plaintext and ciphertext have certain length.  Such protocols need to
-specify how the plaintext is padded, and how much padding it
-receives.
+parameters.  ChaCha20 then serializes the resulting state by writing
+the numbers in little-endian order, creating a key-stream block.
+Concatenating the key-stream blocks from the successive blocks forms
+a key stream, which is then XOR-ed with the plaintext.
+Alternatively, each key-stream block can be XOR-ed with a plaintext
+block before proceeding to create the next block, saving some memory.
+
+There is no requirement for the plaintext to be an integral multiple
+of 512-bits.  If there is extra keystream from the last block, it is
+discarded.  Specific protocols MAY require that the plaintext and
+ciphertext have certain length.  Such protocols need to specify how
+the plaintext is padded, and how much padding it receives.
 
 The inputs to ChaCha20 are:
 
@@ -403,13 +463,26 @@ The inputs to ChaCha20 are:
 The output is an encrypted message of the same length.
 
 ```cryptol
+// TODO: reorder args below, and get rid of this wrapper
+ChaCha20Encrypt : {a} (fin a) => ChaChaKey -> [32] -> [96] -> [a][8] -> [a][8]
+ChaCha20Encrypt k i n msg = ChaCha20EncryptBytes msg k n i
+
+ChaCha20EncryptBytes msg k n i= [ m ^ kb | m <- msg | kb <- keystream ] where
+    keystream = groupBy`{8}(join (join (ChaCha20ExpandKey k n i)))
+
 ChaCha20ExpandKey : ChaChaKey -> [96] -> [32] -> [inf]ChaChaState
 ChaCha20ExpandKey k n i = [ ToLittleEndian (ChaCha20Block k n j)
                           | j <- ([i ...]:[_][32])
                           ]
 
-ChaCha20EncryptBytes msg k n i= [ m ^ kb | m <- msg | kb <- keystream ] where
-    keystream = groupBy`{8}(join (join (ChaCha20ExpandKey k n i)))
+```
+
+Decryption is done in the same way.  The ChaCha20 block function is
+used to expand the key into a key stream, which is XOR-ed with the
+ciphertext giving back the plaintext.
+
+```cryptol
+ChaCha20DecryptBytes = ChaCha20EncryptBytes
 ```
 
 ### Example and Test Vector for the ChaCha20 Cipher
@@ -524,7 +597,7 @@ property SunscreenKeystream_correct (skref:[skwidth][8]) =
                                     Sunscreen_Key Sunscreen_Nonce 1)))) == skref
 ```
 
-We XOR the Keystream with the plaintext, yielding the Ciphertext:
+Finally, we XOR the Keystream with the plaintext, yielding the Ciphertext:
 
 ```cryptol
 Ciphertext_Sunscreen =
@@ -543,12 +616,6 @@ Ciphertext_Sunscreen =
 property ChaCha_encrypt_sunscreen_correct =
     ChaCha20EncryptBytes Plaintext_Sunscreen Sunscreen_Key Sunscreen_Nonce 1
     == Ciphertext_Sunscreen
-```
-
-Finally, decrypt is the same as encrypt:
-
-```cryptol
-ChaCha20DecryptBytes = ChaCha20EncryptBytes
 
 property Sunscreen_decrypt_correct =
     ChaCha20DecryptBytes Ciphertext_Sunscreen Sunscreen_Key Sunscreen_Nonce 1
@@ -568,7 +635,7 @@ secret) nonce.  AES is used there for encrypting the nonce, so as to
 get a unique (and secret) 128-bit string, but as the paper states,
 "There is nothing special about AES here.  One can replace AES with
 an arbitrary keyed function from an arbitrary set of nonces to 16-
-byte strings.".
+byte strings."
 
 Regardless of how the key is generated, the key is partitioned into
 two parts, called "r" and "s".  The pair ``(r,s)`` should be unique, and
@@ -586,12 +653,12 @@ Om = 15 // odd masks - for 3, 7, 11 & 15
  *  r[4], r[8], and r[12] are required to have their bottom two bits
     clear (be divisible by 4)
 
+The following Cryptol code clamps "r" to be appropriate:
+
 ```cryptol
 Em = 252 // even masks - for 4, 8 & 12
 nm = 255 // no mask
-```
 
-```cryptol
 PolyMasks : [16][8]            // mask indices
 PolyMasks = [ nm, nm, nm, Om,  // 0-3
               Em, nm, nm, Om,  // 4-7
@@ -623,26 +690,27 @@ Poly1305 : {m, floorBlocks, rem} (fin m, floorBlocks == m/16, rem == m - floorBl
 Set the constant prime "P" be 2^130-5.
 
 ```cryptol
-P:[136]
-P = (2^^130)-5
+P : [136]
+P = 2^^130 - 5
 ```
+
+First, the "r" value should be clamped.
 
 ```cryptol
 Poly1305 key msg = result where
     [ru, su] = split key
-```
-
- * First, the "r" value should be clamped.
-
-```cryptol
     r : [136] // internal arithmetic on (128+8)-bit numbers
     r = littleendian ((Poly1305_clamp (split ru)) # [0x00])
     s = littleendian ((split su) # [0x00])
 ```
 
- * Next, divide the message into 16-byte blocks. The last block might be shorter.
+Next, divide the message into 16-byte blocks. The last block might be shorter:
+
  * Read each block as a little-endian number.
- * Prepend a 0x01 byte to the sequence of octets.
+ * Add one bit beyond the number of octets.  For a 16-byte block this
+   is equivalent to adding 2^128 to the number.  For the shorter
+   block it can be 2^120, 2^112, or any power of two that is evenly
+   divisible by 8, all the way down to 2^8.
 
 ```cryptol
     // pad all the blocks uniformly (we'll handle the final block later)
@@ -657,15 +725,15 @@ Poly1305 key msg = result where
     lastBlock = zero # 0x01 # (littleendian (drop`{16*floorBlocks} msg))
 ```
 
- *  Initialize the accumulator to zero, then for each block
-    *  Add the current block to the accumulator.
-    *  Multiply by "r"
-    *  Set the accumulator to the result modulo p.  To summarize: 
-       ``accum[i+1] = ((accum[i]+block)*r) % p``.
+ *  Add the current block to the accumulator.
+ *  Multiply by "r"
+ *  Set the accumulator to the result modulo p.  To summarize: 
+    ``accum[i+1] = ((accum[i]+block)*r) % p``.
 
 ```cryptol
     accum:[_][136]
     accum = [zero:[136]] # [ computeElt a b r P | a <- accum | b <- paddedBlocks ]
+    //       ^ the accumulator starts at zero
 ```
 
  * If the block division leaves no remainder, the last value of the accumulator is good
@@ -678,9 +746,9 @@ Poly1305 key msg = result where
                    else computeElt (accum@`floorBlocks) lastBlock r P
 ```
 
- * Finally, the value of the secret key "s" is added to the accumulator,
-   and the 128 least significant bits are serialized in little-endian
-   order to form the tag.
+Finally, the value of the secret key "s" is added to the accumulator,
+and the 128 least significant bits are serialized in little-endian
+order to form the tag.
 
 ```cryptol
     result = reverse (groupBy`{8} (drop`{8}(lastAccum + s)))
@@ -690,26 +758,132 @@ computeElt : [136] -> [136] -> [136] -> [136] -> [136]
 computeElt a b r p = (drop`{137}bigResult) where
     bigResult : [273]
     aPlusB : [137]
-    timesR : [273]
     aPlusB = (0b0#a) + (0b0#b)                        // make room for carry
+    timesR : [273]
     timesR = ((zero:[136])#aPlusB) * ((zero:[137])#r) // [a]*[b]=[a+b]
-    bigResult = timesR % (zero#P) // bigP
+    bigResult = timesR % ((zero:[137])#p)
 
 ```
 
-A simple test vector:
+### Poly1305 Example and Test Vector
+
+For our example, we will dispense with generating the one-time key
+using AES, and assume that we got the following keying material:
+
+ * Key Material: 85:d6:be:78:57:55:6d:33:7f:44:52:fe:42:d5:06:a8:01:
+   03:80:8a:fb:0d:b2:fd:4a:bf:f6:af:41:49:f5:1b
 
 ```cryptol
 Poly1305TestKey = join (parseHexString 
     ( "85:d6:be:78:57:55:6d:33:7f:44:52:fe:42:d5:06:a8:01:"
     # "03:80:8a:fb:0d:b2:fd:4a:bf:f6:af:41:49:f5:1b."
     ) )
+```
 
-Poly1305Message = "Cryptographic Forum Research Group"
+ * s as an octet string: 01:03:80:8a:fb:0d:b2:fd:4a:bf:f6:af:41:49:f5:1b
+ * s as a 128-bit number: 1bf54941aff6bf4afdb20dfb8a800301
+
+```cryptol
+Poly1305Test_s = parseHexString
+    "01:03:80:8a:fb:0d:b2:fd:4a:bf:f6:af:41:49:f5:1b."
+Poly1305Test_sbits = join (reverse Poly1305Test_s)
+
+property poly1306Sokay = Poly1305Test_sbits == 0x1bf54941aff6bf4afdb20dfb8a800301
+```
+
+
+```cryptol
+Poly1305TestMessage = "Cryptographic Forum Research Group"
+```
+
+ * r before clamping: 85:d6:be:78:57:55:6d:33:7f:44:52:fe:42:d5:06:a8
+ * Clamped r as a number: 806d5400e52447c036d555408bed685.
+
+Since Poly1305 works in 16-byte chunks, the 34-byte message divides
+into 3 blocks.  In the following calculation, "Acc" denotes the
+accumulator and "Block" the current block:
+
+Here we define a Cryptol function that returns all of the intermediate
+values of the accumulator:
+
+```cryptol
+// TODO: refactor the Poly function in terms of this AccumBlocks
+// challenge: doing so while maintaining the clean literate correspondence with the spec
+AccumBlocks : {m, floorBlocks, rem} (fin m, floorBlocks == m/16, rem == m - floorBlocks*16) 
+              => [256] -> [m][8] -> ([_][136], [136])
+
+AccumBlocks key msg = (accum, lastAccum) where
+    [ru, su] = split key
+    r : [136] // internal arithmetic on (128+8)-bit numbers
+    r = littleendian ((Poly1305_clamp (split ru)) # [0x00])
+    s = littleendian ((split su) # [0x00])
+    // pad all the blocks uniformly (we'll handle the final block later)
+    paddedBlocks = [ 0x01 # (littleendian block)
+                   | block <- groupBy`{16}(msg # (zero:[inf][8])) ]
+    lastBlock : [136]
+    lastBlock = zero # 0x01 # (littleendian (drop`{16*floorBlocks} msg))
+    accum:[_][136]
+    accum = [zero:[136]] # [ computeElt a b r P | a <- accum | b <- paddedBlocks ]
+    //       ^ the accumulator starts at zero
+    lastAccum : [136]
+    lastAccum = if `rem == 0
+                   then accum@`floorBlocks
+                   else computeElt (accum@`floorBlocks) lastBlock r P
+
+```
+
+```example
+Block #1
+
+Acc = 00
+Block = 6f4620636968706172676f7470797243
+Block with 0x01 byte = 016f4620636968706172676f7470797243
+Acc + block = 016f4620636968706172676f7470797243
+(Acc+Block) * r =
+    b83fe991ca66800489155dcd69e8426ba2779453994ac90ed284034da565ecf
+Acc = ((Acc+Block)*r) % P = 2c88c77849d64ae9147ddeb88e69c83fc
+
+Block #2
+
+Acc = 2c88c77849d64ae9147ddeb88e69c83fc
+Block = 6f7247206863726165736552206d7572
+Block with 0x01 byte = 016f7247206863726165736552206d7572
+Acc + block = 437febea505c820f2ad5150db0709f96e
+(Acc+Block) * r =
+    21dcc992d0c659ba4036f65bb7f88562ae59b32c2b3b8f7efc8b00f78e548a26
+Acc = ((Acc+Block)*r) % P = 2d8adaf23b0337fa7cccfb4ea344b30de
+
+Last Block
+
+Acc = 2d8adaf23b0337fa7cccfb4ea344b30de
+Block = 7075
+Block with 0x01 byte = 017075
+Acc + block = 2d8adaf23b0337fa7cccfb4ea344ca153
+(Acc + Block) * r =
+    16d8e08a0f3fe1de4fe4a15486aca7a270a29f1e6c849221e4a6798b8e45321f
+((Acc + Block) * r) % P = 28d31b7caff946c77c8844335369d03a7
+```
+
+```cryptol
+property polyBlocksOK = 
+    (blocks @ 1 == 0x02c88c77849d64ae9147ddeb88e69c83fc) &&
+    (blocks @ 2 == 0x02d8adaf23b0337fa7cccfb4ea344b30de) &&
+    (lastBlock  == 0x028d31b7caff946c77c8844335369d03a7) where
+        (blocks, lastBlock) = AccumBlocks Poly1305TestKey Poly1305TestMessage
+```
+
+Adding s we get this number, and serialize if to get the tag:
+
+Acc + s = 2a927010caf8b2bc2c6365130c11d06a8
+
+Tag: a8:06:1d:c1:30:51:36:c6:c2:2b:8b:af:0c:01:27:a9
+   
+```cryptol
+// Putting it all together and testing:
 
 Poly1305TestTag = "a8:06:1d:c1:30:51:36:c6:c2:2b:8b:af:0c:01:27:a9."
 
-property Poly1305_passes_test = Poly1305 Poly1305TestKey Poly1305Message ==
+property Poly1305_passes_test = Poly1305 Poly1305TestKey Poly1305TestMessage ==
     parseHexString Poly1305TestTag
 ```
 
@@ -718,29 +892,32 @@ property Poly1305_passes_test = Poly1305 Poly1305TestKey Poly1305Message ==
 As said in the "Poly 1305 Algorithm" section, it is acceptable to generate
 the one-time Poly1305 pseudo-randomly.  This section proposes such a method.
 
-To generate such a key pair (r,s), we will use the ChaCha20 block function
-described in the "ChaCha20 block function" section.  This assumes that we have
-a 256- bit session key for the MAC function, such as SK_ai and SK_ar in IKEv2,
-the integrity key in ESP and AH, or the client_write_MAC_key and
-server_write_MAC_key in TLS.  Any document that specifies the use of Poly1305
-as a MAC algorithm for some protocol must specify that 256 bits are allocated
-for the integrity key.
+To generate such a key pair (r,s), we will use the ChaCha20 block
+function described in Section 2.3.  This assumes that we have a 256-
+bit session key for the MAC function, such as SK_ai and SK_ar in
+IKEv2 ([RFC5996]), the integrity key in ESP and AH, or the
+client_write_MAC_key and server_write_MAC_key in TLS.  Any document
+that specifies the use of Poly1305 as a MAC algorithm for some
+protocol must specify that 256 bits are allocated for the integrity
+key.  Note that in the AEAD construction defined in Section 2.8, the
+same key is used for encryption and key generation, so the use of
+SK_a* or *_write_MAC_key is only for stand-alone Poly1305.
 
 The method is to call the block function with the following
 parameters:
-
- *  The 256-bit session integrity key is used as the ChaCha20 key.
- *  The block counter is set to zero.
- *  The protocol will specify a 96-bit or 64-bit nonce.  This MUST be
-    unique per invocation with the same key, so it MUST NOT be
-    randomly generated.  A counter is a good way to implement this,
-    but other methods, such as an LFSR are also acceptable.  ChaCha20
-    as specified here requires a 96-bit nonce.  So if the provided
-    nonce is only 64-bit, then the first 32 bits of the nonce will be
-    set to a constant number.  This will usually be zero, but for
-    protocols with multiple sender, it may be different for each
-    sender, but should be the same for all invocations of the function
-    with the same key by a particular sender.
+   
+ * The 256-bit session integrity key is used as the ChaCha20 key.
+ * The block counter is set to zero.
+ * The protocol will specify a 96-bit or 64-bit nonce.  This MUST be
+   unique per invocation with the same key, so it MUST NOT be
+   randomly generated.  A counter is a good way to implement this,
+   but other methods, such as an LFSR are also acceptable.  ChaCha20
+   as specified here requires a 96-bit nonce.  So if the provided
+   nonce is only 64-bit, then the first 32 bits of the nonce will be
+   set to a constant number.  This will usually be zero, but for
+   protocols with multiple senders it may be different for each
+   sender, but should be the same for all invocations of the function
+   with the same key by a particular sender.
 
 After running the block function, we have a 512-bit state.  We take
 the first 256 bits or the serialized state, and use those as the one-
@@ -753,57 +930,85 @@ encryption algorithms (often called Initialization Vectors, or IVs),
 they usually don't have such a provision for the MAC function.  In
 that case the per-invocation nonce will have to come from somewhere
 else, such as a message counter.
-
+   
 ### Poly1305 Key Generation Test Vector
 
-   For this example, we'll set:
+For this example, we'll set:
 
 ```cryptol
-PolyKeyTest = join
-    [0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a,
-     0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95,
-     0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f]
+PolyKeyTest = join (parseHexString (
+    "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " #
+    "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f "
+    ))
 
-PolyNonceTest = join [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02,
-                       0x03, 0x04, 0x05, 0x06, 0x07]
+PolyNonceTest : [96]
+PolyNonceTest = join (
+    parseHexString ("00 00 00 00 00 01 02 03 04 05 06 07 "))
 ```
 
 The ChaCha state set up with key, nonce, and block counter zero:
-```verbatim
-     61707865  3320646e  79622d32  6b206574
-     83828180  87868584  8b8a8988  8f8e8d8c
-     93929190  97969594  9b9a9998  9f9e9d9c
-     00000000  00000000  03020100  07060504
+
+```cryptol
+PolyBuildState_testVector = [
+     0x61707865,  0x3320646e,  0x79622d32,  0x6b206574,
+     0x83828180,  0x87868584,  0x8b8a8988,  0x8f8e8d8c,
+     0x93929190,  0x97969594,  0x9b9a9998,  0x9f9e9d9c,
+     0x00000000,  0x00000000,  0x03020100,  0x07060504 ]
+
+property PolyBuildState_correct = BuildState PolyKeyTest PolyNonceTest 0
+    == PolyBuildState_testVector
 ```
 
 The ChaCha state after 20 rounds:
-```verbatim
-     8ba0d58a  cc815f90  27405081  7194b24a
-     37b633a8  a50dfde3  e2b8db08  46a6d1fd
-     7da03782  9183a233  148ad271  b46773d1
-     3cc1875a  8607def1  ca5c3086  7085eb87
+
+```cryptol
+PolyChaChaState_testVector = [
+     0x8ba0d58a,  0xcc815f90,  0x27405081,  0x7194b24a,
+     0x37b633a8,  0xa50dfde3,  0xe2b8db08,  0x46a6d1fd,
+     0x7da03782,  0x9183a233,  0x148ad271,  0xb46773d1,
+     0x3cc1875a,  0x8607def1,  0xca5c3086,  0x7085eb87 ]
+ 
+property PolyChaCha_correct = ChaCha20Block PolyKeyTest PolyNonceTest 0 ==
+    PolyChaChaState_testVector
 ```
 
 And that output is also the 32-byte one-time key used for Poly1305.
 
 ```cryptol
-PolyOutput = join
-    [0x8a, 0xd5, 0xa0, 0x8b, 0x90, 0x5f, 0x81, 0xcc, 0x81, 0x50, 0x40,
-     0x27, 0x4a, 0xb2, 0x94, 0x71, 0xa8, 0x33, 0xb6, 0x37, 0xe3, 0xfd,
-     0x0d, 0xa5, 0x08, 0xdb, 0xb8, 0xe2, 0xfd, 0xd1, 0xa6, 0x46]
+PolyOutput = join (parseHexString (
+    "8a d5 a0 8b 90 5f 81 cc 81 50 40 27 4a b2 94 71 " #
+    "a8 33 b6 37 e3 fd 0d a5 08 db b8 e2 fd d1 a6 46 "))
 
 GeneratePolyKeyUsingChaCha k n i = join [littleendian (groupBy`{8}b) 
                                         | b <- take `{8}(ChaCha20Block k n i) ]
 
-Poly_passes_test = GeneratePolyKeyUsingChaCha PolyKeyTest PolyNonceTest 0 == PolyOutput
+property Poly_passes_test = GeneratePolyKeyUsingChaCha PolyKeyTest PolyNonceTest 0 == PolyOutput
 ```
 
-## AEAD Construction
+## A Pseudo-Random Function for ChaCha/Poly-1305 based Crypto Suites
 
-Note: Much of the content of this document, including this AEAD
-construction is taken from Adam Langley's draft ([agl-draft]) for the
-use of these algorithms in TLS.  The AEAD construction described here
-is called AEAD_CHACHA20-POLY1305.
+Some protocols such as IKEv2([RFC5996]) require a Pseudo-Random
+Function (PRF), mostly for key derivation.  In the IKEv2 definition,
+a PRF is a function that accepts a variable-length key and a
+variable-length input, and returns a fixed-length output.  This
+section does not specify such a function.
+
+Poly-1305 is an obvious choice, because MAC functions are often used
+as PRFs.  However, Poly-1305 prohibits using the same key twice,
+whereas the PRF in IKEv2 is used multiple times with the same key.
+Adding a nonce or a counter to Poly-1305 can solve this issue, much
+as we do when using this function as a MAC, but that would require
+changing the interface for the PRF function.
+
+Chacha20 could be used as a key-derivation function, by generating an
+arbitrarily long keystream.  However, that is not what protocols such
+as IKEv2 require.
+
+For this reason, this document does not specify a PRF, and recommends
+that crypto suites use some other PRF such as PRF_HMAC_SHA2_256
+(section 2.1.2 of [RFC4868])
+
+## AEAD Construction
 
 AEAD_CHACHA20-POLY1305 is an authenticated encryption with additional
 data algorithm.  The inputs to AEAD_CHACHA20-POLY1305 are:
@@ -811,61 +1016,69 @@ data algorithm.  The inputs to AEAD_CHACHA20-POLY1305 are:
  *  A 256-bit key
  *  A 96-bit nonce - different for each invocation with the same key.
  *  An arbitrary length plaintext (fewer than 2^64 bytes)
- *  Arbitrary length additional data (fewer than 2^64 bytes)
+ *  Arbitrary length additional data (AAD) (fewer than 2^64 bytes)
 
 ```cryptol
-AEAD_CHACHA20_POLY1305 : {m, n} (fin m, fin n, 64 >= width m, 64 >= width n)
-                       => [256] -> [64] -> [32]
-                          -> [m][8] -> [n][8] -> [m+16][8]
+AEAD_CHACHA20_POLY1305 : {m, n,p1,p2} 
+                         (fin m, 64 >= width m
+                         ,fin n, 64 >= width n
+                         ,p1 == ((16-(m%16)) %16)
+                         ,p2 == ((16-(n%16)) %16) )
+                       => [256] -> [96] -> [m][8] -> [n][8] 
+                       -> [m+16][8]
 
-AEAD_CHACHA20_POLY1305 k iv c p ad = (ct # tag) where
+AEAD_CHACHA20_POLY1305 k nonce p aad = (ct # tag) where 
 ```
+
+Some protocols may have unique per-invocation inputs that are not 96-
+bit in length.  For example, IPsec may specify a 64-bit nonce.  In
+such a case, it is up to the protocol document to define how to
+transform the protocol nonce into a 96-bit nonce, for example by
+concatenating a constant value.
 
 The ChaCha20 and Poly1305 primitives are combined into an AEAD that
-takes a 256-bit key and 64-bit IV as follows:
+takes a 256-bit key and 96-bit nonce as follows:
 
- *  First the 96-bit nonce is constructed by prepending a 32-bit
-    constant value to the IV.  This could be set to zero, or could be
-    derived from keying material, or could be assigned to a sender.
-    It is up to the specific protocol to define the source for that
-    32-bit value.
+ *  First, a Poly1305 one-time key is generated from the 256-bit key
+    and nonce using the procedure described in "Generating the Poly1305 key using ChaCha20".
 
 ```cryptol
-    AeadNonce = c # iv
-```
- *  Next, a Poly1305 one-time key is generated from the 256-bit key
-    and nonce using the procedure described in Section 2.6.
-
-```cryptol
-    PolyKey = GeneratePolyKeyUsingChaCha k AeadNonce 0
+    PolyKey = GeneratePolyKeyUsingChaCha k nonce 0
 ```
 
- *  The ChaCha20 encryption function is called to encrypt the
+ *  Next, the ChaCha20 encryption function is called to encrypt the
     plaintext, using the input key and nonce, and with the initial
     counter set to 1.
 
 ```cryptol
-    ct = ChaCha20EncryptBytes p k AeadNonce 1 
+    ct = ChaCha20EncryptBytes p k nonce 1 
 ```
 
- *  The tag is computed by calling the Poly1305 function with
-    the Poly1305 key calculated above, and with a message constructed
-    as a concatenation of the following:
-    *  The additional data
-    *  The length of the additional data in octets (as a 64-bit
-       little-endian integer).  TBD: bit count rather than octets?
-       network order?
+ *  Finally, the Poly1305 function is called with the Poly1305 key
+    calculated above, and a message constructed as a concatenation of
+    the following:
+    *  The AAD
+    *  padding1 - the padding is up to 15 zero bytes, and it brings
+       the total length so far to an integral multiple of 16.  If the
+       length of the AAD was already an integral multiple of 16 bytes,
+       this field is zero-length.
     *  The ciphertext
+    *  padding2 - the padding is up to 15 zero bytes, and it brings
+       the total length so far to an integral multiple of 16.  If the
+       length of the ciphertext was already an integral multiple of 16
+       bytes, this field is zero-length.
+    *  The length of the additional data in octets (as a 64-bit
+       little-endian integer).
     *  The length of the ciphertext in octets (as a 64-bit little-
-       endian integer).  TBD: bit count rather than octets? network
-       order?
+       endian integer).
 
 ```cryptol
     ptlen : [8][8]
     ptlen = groupBy`{8}(littleendian (groupBy`{8}(`m:[64]))) 
     adlen : [8][8]
-    adlen = groupBy`{8}(littleendian (groupBy`{8}(`n:[64]))) 
-    tag   = Poly1305 PolyKey (ad # adlen # ct # ptlen)
+    adlen = groupBy`{8}(littleendian (groupBy`{8}(`n:[64])))
+    tag : [16][8]
+    tag = Poly1305 PolyKey (aad # (zero:[p1][8]) # ct # (zero:[p2][8]) # adlen # ptlen)
 ```
 
 The output from the AEAD is twofold:
@@ -876,37 +1089,44 @@ The output from the AEAD is twofold:
 Decryption is pretty much the same thing.
 
 ```cryptol
-AEAD_CHACHA20_POLY1305_DECRYPT : {m, n} (fin m, fin n,
-                                         64 >= width m, 64 >= width n)
-                                 => [256] -> [64] -> [32]
+
+AEAD_CHACHA20_POLY1305_DECRYPT : {m, n, p1, p2} (fin m, fin n
+                                 ,64 >= width m, 64 >= width n
+                                 ,p1==(16-m%16)%16
+                                 ,p2==(16-n%16)%16)
+                                 => [256] -> [96]
                                     -> [m+16][8] -> [n][8]
                                     -> ([m][8], Bit)
 
-AEAD_CHACHA20_POLY1305_DECRYPT k iv c ct ad = (pt, valid) where
+AEAD_CHACHA20_POLY1305_DECRYPT k nonce ct ad = (pt, valid) where
     inTag = drop`{m}ct
     inCt = take`{m}ct
-    AeadNonce = c # iv
-    PolyKey = GeneratePolyKeyUsingChaCha k AeadNonce 0
-    pt = ChaCha20DecryptBytes inCt k AeadNonce 1
+    PolyKey = GeneratePolyKeyUsingChaCha k nonce 0
+    pt = ChaCha20DecryptBytes inCt k nonce 1
     ptlen : [8][8]
     ptlen = groupBy`{8}(littleendian (groupBy`{8}(`m:[64])))
     adlen : [8][8]
     adlen = groupBy`{8}(littleendian (groupBy`{8}(`n:[64])))
-    tag   = Poly1305 PolyKey (ad # adlen # inCt # ptlen)
+    // OLD tag   = Poly1305 PolyKey (ad # adlen # inCt # ptlen)
+    tag = Poly1305 PolyKey (ad # (zero:[p1][8]) # inCt # (zero:[p2][8]) # adlen # ptlen)
     valid = tag == inTag
+
 ```
 
 A few notes about this design:
 
  1.  The amount of encrypted data possible in a single invocation is
-     2^32-1 blocks of 64 bytes each, for a total of 247,877,906,880
-     bytes, or nearly 256 GB.  This should be enough for traffic
-     protocols such as IPsec and TLS, but may be too small for file
-     and/or disk encryption.  For such uses, we can return to the
-     original design, reduce the nonce to 64 bits, and use the integer
-     at position 13 as the top 32 bits of a 64-bit block counter,
-     increasing the total message size to over a million petabytes
-     (1,180,591,620,717,411,303,360 bytes to be exact).
+     2^32-1 blocks of 64 bytes each, because of the size of the block
+     counter field in the ChaCha20 block function.  This gives a total
+     of 247,877,906,880 bytes, or nearly 256 GB.  This should be
+     enough for traffic protocols such as IPsec and TLS, but may be
+     too small for file and/or disk encryption.  For such uses, we can
+     return to the original design, reduce the nonce to 64 bits, and
+     use the integer at position 13 as the top 32 bits of a 64-bit
+     block counter, increasing the total message size to over a
+     million petabytes (1,180,591,620,717,411,303,360 bytes to be
+     exact).
+
  1.  Despite the previous item, the ciphertext length field in the
      construction of the buffer on which Poly1305 runs limits the
      ciphertext (and hence, the plaintext) size to 2^64 bytes, or
@@ -925,26 +1145,31 @@ AeadPt = "Ladies and Gentlemen of the class of '99: " #
          "If I could offer you only one tip for " #
          "the future, sunscreen would be it."
 
-AeadAAD = [0x50, 0x51, 0x52, 0x53, 0xc0, 0xc1,
-           0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7]
+AeadAAD = parseHexString "50 51 52 53 c0 c1 c2 c3 c4 c5 c6 c7 "
 
-AeadKey = join [ 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86,
-                 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d,
-                 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94,
-                 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b,
-                 0x9c, 0x9d, 0x9e, 0x9f ]
+AeadKey = join (parseHexString (
+    "80 81 82 83 84 85 86 87 88 89 8a 8b 8c 8d 8e 8f " #
+    "90 91 92 93 94 95 96 97 98 99 9a 9b 9c 9d 9e 9f " ))
+
 
 AeadIV = join [ 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47 ]
+
+AeadC = join [0x07, 0x00, 0x00, 0x00]
+
+AeadNonce = AeadC # AeadIV
 ```
 
 32-bit fixed-common part:
 
 ```cryptol
-AeadC = join [0x07, 0x00, 0x00, 0x00]
+AeadCT = ChaCha20EncryptBytes AeadPt AeadKey AeadNonce 1
 
-AeadCT = ChaCha20EncryptBytes AeadPt AeadKey (AeadC # AeadIV) 1
+type p1width = 4
+type p2width = 14
 
-AeadConstruction = (AeadAAD # ADleLen # AeadCT # CTleLen)
+AeadConstruction AAD CT = (AeadAAD # padding1 # AeadCT # padding2 # ADleLen # CTleLen) where
+    padding1 = zero:[p1width][8]
+    padding2 = zero:[p2width][8]
 
 AeadPolyKey = GeneratePolyKeyUsingChaCha AeadKey (AeadC # AeadIV) 0
 
@@ -954,30 +1179,44 @@ ADleLen = groupBy`{8}(littleendian (groupBy`{8}((width AeadAAD):[64])))
 CTleLen : [8][8]
 CTleLen = groupBy`{8}(littleendian (groupBy`{8}((width AeadCT):[64])))
 
-AeadTag = Poly1305 AeadPolyKey AeadConstruction
+AeadTag = Poly1305 AeadPolyKey (AeadConstruction AeadAAD AeadCT)
 ```
 
 Set up for generating poly1305 one-time key (sender id=7):
-```verbatim
-    61707865  3320646e  79622d32  6b206574
-    83828180  87868584  8b8a8988  8f8e8d8c
-    93929190  97969594  9b9a9998  9f9e9d9c
-    00000000  00000007  43424140  47464544
+
+```cryptol
+AeadPolyOneTimeKey_testVector = [
+    0x61707865,  0x3320646e,  0x79622d32,  0x6b206574,
+    0x83828180,  0x87868584,  0x8b8a8988,  0x8f8e8d8c,
+    0x93929190,  0x97969594,  0x9b9a9998,  0x9f9e9d9c,
+    0x00000000,  0x00000007,  0x43424140,  0x47464544 ]
+
+property AeadPolyKeyBuildState_correct = 
+    BuildState AeadKey AeadNonce 0 == AeadPolyOneTimeKey_testVector
 ```
 
 After generating Poly1305 one-time key:
-```verbatim
-    252bac7b  af47b42d  557ab609  8455e9a4
-    73d6e10a  ebd97510  7875932a  ff53d53e
-    decc7ea2  b44ddbad  e49c17d1  d8430bc9
-    8c94b7bc  8b7d4b4b  3927f67d  1669a432
-
-Poly1305 Key:
-7b ac 2b 25 2d b4 47 af 09 b6 7a 55 a4 e9 55 84|{.+%-.G...zU..U.
-0a e1 d6 73 10 75 d9 eb 2a 93 75 78 3e d5 53 ff|...s.u..*.ux>.S.
-```
 
 ```cryptol
+AeadPolyOneTimeKeyState = [
+    0x252bac7b,  0xaf47b42d,  0x557ab609,  0x8455e9a4,
+    0x73d6e10a,  0xebd97510,  0x7875932a,  0xff53d53e,
+    0xdecc7ea2,  0xb44ddbad,  0xe49c17d1,  0xd8430bc9,
+    0x8c94b7bc,  0x8b7d4b4b,  0x3927f67d,  0x1669a432]
+
+property AeadPolyChaCha_correct = 
+    ChaCha20Block AeadKey AeadNonce 0 == AeadPolyOneTimeKeyState
+```
+
+Poly1305 Key:
+
+```cryptol
+Poly1305Key_testVector = join (parseHexString (
+    "7b ac 2b 25 2d b4 47 af 09 b6 7a 55 a4 e9 55 84 " #
+    "0a e1 d6 73 10 75 d9 eb 2a 93 75 78 3e d5 53 ff " ))
+
+property poly1305Test_correct = AeadPolyKey == Poly1305Key_testVector
+
 Poly1305_r = 0x0455e9a4057ab6080f47b42c052bac7b
 Poly1305_s = 0xff53d53e7875932aebd9751073d6e10a
 ```
@@ -1003,29 +1242,41 @@ Ciphertext:
 080  fa b3 24 e4 fa d6 75 94 55 85 80 8b 48 31 d7 bc|..$...u.U...H1..
 096  3f f4 de f0 8e 4b 7a 9d e5 76 d2 65 86 ce c6 4b|?....Kz..v.e...K
 112  61 16                                          |a.
+```
 
+AEAD Construction for Poly1305:
 
-AEAD Construction for input to Poly1305:
-000  50 51 52 53 c0 c1 c2 c3 c4 c5 c6 c7 0c 00 00 00|PQRS............
-016  00 00 00 00 d3 1a 8d 34 64 8e 60 db 7b 86 af bc|.......4d.`.{...
-032  53 ef 7e c2 a4 ad ed 51 29 6e 08 fe a9 e2 b5 a7|S.~....Q)n......
-048  36 ee 62 d6 3d be a4 5e 8c a9 67 12 82 fa fb 69|6.b.=..^..g....i
-064  da 92 72 8b 1a 71 de 0a 9e 06 0b 29 05 d6 a5 b6|..r..q.....)....
-080  7e cd 3b 36 92 dd bd 7f 2d 77 8b 8c 98 03 ae e3|~.;6...-w......
-096  28 09 1b 58 fa b3 24 e4 fa d6 75 94 55 85 80 8b|(..X..$...u.U...
-112  48 31 d7 bc 3f f4 de f0 8e 4b 7a 9d e5 76 d2 65|H1..?....Kz..v.e
-128  86 ce c6 4b 61 16 72 00 00 00 00 00 00 00      |...Ka.r.......
+```cryptol
+AeadConstructionTestVector = parseHexString (
+   "50:51:52:53:c0:c1:c2:c3:c4:c5:c6:c7:00:00:00:00:" #
+   "d3:1a:8d:34:64:8e:60:db:7b:86:af:bc:53:ef:7e:c2:" #
+   "a4:ad:ed:51:29:6e:08:fe:a9:e2:b5:a7:36:ee:62:d6:" #
+   "3d:be:a4:5e:8c:a9:67:12:82:fa:fb:69:da:92:72:8b:" #
+   "1a:71:de:0a:9e:06:0b:29:05:d6:a5:b6:7e:cd:3b:36:" #
+   "92:dd:bd:7f:2d:77:8b:8c:98:03:ae:e3:28:09:1b:58:" #
+   "fa:b3:24:e4:fa:d6:75:94:55:85:80:8b:48:31:d7:bc:" #
+   "3f:f4:de:f0:8e:4b:7a:9d:e5:76:d2:65:86:ce:c6:4b:" #
+   "61:16:00:00:00:00:00:00:00:00:00:00:00:00:00:00:" #
+   "0c:00:00:00:00:00:00:00:72:00:00:00:00:00:00:00." )
+```
 
+Note the 4 zero bytes in line 000 and the 14 zero bytes in line 128
 
-Tag:
-18:fb:11:a5:03:1a:d1:3a:7e:3b:03:d4:6e:e3:a6:a7
+```cryptol
+// Tag:
+AeadTagTestVector = parseHexString "1a:e1:0b:59:4f:09:e2:6a:7e:90:2e:cb:d0:60:06:91."
 ```
 
 ```cryptol
-property AeadDecrypt_correct = ptGood && isValid where
-    (pt,isValid) = AEAD_CHACHA20_POLY1305_DECRYPT AeadKey AeadIV AeadC cypherText AeadAAD
-    cypherText   = (AEAD_CHACHA20_POLY1305 AeadKey AeadIV AeadC AeadPt AeadAAD)
-    ptGood       = AeadPt == pt
+property AeadTag_correct = AeadTag == AeadTagTestVector 
+
+property AeadConstruction_correct = (AeadConstruction AeadAAD AeadCT) == AeadConstructionTestVector
+
+property AeadDecrypt_correct = ptMatches && isValid where
+    (pt,isValid) = AEAD_CHACHA20_POLY1305_DECRYPT AeadKey (AeadIV # AeadC) cypherText AeadAAD
+    cypherText   = (AEAD_CHACHA20_POLY1305 AeadKey (AeadIV # AeadC) AeadPt AeadAAD)
+    ptMatches    = AeadPt == pt
+
 ```
 
 # Implementation Advice
@@ -1035,14 +1286,14 @@ operation for loading the state, 80 each of XOR, addition and Roll
 operations for the rounds, 16 more add operations and 16 XOR
 operations for protecting the plaintext.  Section 2.3 describes the
 ChaCha block function as "adding the original input words".  This
-implies that before starting the rounds on the ChaCha state, it is
-copied aside only to be added in later.  This would be correct, but
-it saves a few operations to instead copy the state and do the work
-on the copy.  This way, for the next block you don't need to recreate
-the state, but only to increment the block counter.  This saves
+implies that before starting the rounds on the ChaCha state, we copy
+it aside, only to add it in later.  This is correct, but we can save
+a few operations if we instead copy the state and do the work on the
+copy.  This way, for the next block you don't need to recreate the
+state, but only to increment the block counter.  This saves
 approximately 5.5% of the cycles.
 
-It is NOT RECOMMENDED to use a generic big number library such as the
+It is not recommended to use a generic big number library such as the
 one in OpenSSL for the arithmetic operations in Poly1305.  Such
 libraries use dynamic allocation to be able to handle any-sized
 integer, but that flexibility comes at the expense of performance as
@@ -1110,12 +1361,16 @@ There are no IANA considerations for this document.
 
 # Acknowledgements
 
-ChaCha20 and Poly1305 were
-invented by Daniel J. Bernstein, and the AEAD construction was
-invented by Adam Langley.
+ChaCha20 and Poly1305 were invented by Daniel J. Bernstein.  The AEAD
+construction and the method of creating the one-time poly1305 key
+were invented by Adam Langley.
 
-Thanks to Robert Ransom and Ilari Liusvaara for their helpful
-comments and explanations.
+Thanks to Robert Ransom, Watson Ladd, Stefan Buhler, and kenny
+patterson for their helpful comments and explanations.  Thanks to
+Niels Moeller for suggesting the more efficient AEAD construction in
+this document.  Special thanks to Ilari Liusvaara for providing extra
+test vectors, helpful comments, and for being the first to attempt an
+implementation from this draft.
 
 # References
 
@@ -1123,51 +1378,63 @@ comments and explanations.
 
 ```example
 [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
-         Requirement Levels", BCP 14, RFC 2119, March 1997.
+          Requirement Levels", BCP 14, RFC 2119, March 1997.
 
 [chacha]   Bernstein, D., "ChaCha, a variant of Salsa20", Jan 2008.
 
 [poly1305]
-         Bernstein, D., "The Poly1305-AES message-authentication
-         code", Mar 2005.
+          Bernstein, D., "The Poly1305-AES message-authentication
+          code", Mar 2005.
 ```
 
 ## Informative References
 
 ```example
 [AE]       Bellare, M. and C. Namprempre, "Authenticated Encryption:
-           Relations among notions and analysis of the generic
-           composition paradigm",
-           <http://cseweb.ucsd.edu/~mihir/papers/oem.html>.
+          Relations among notions and analysis of the generic
+          composition paradigm",
+          <http://cseweb.ucsd.edu/~mihir/papers/oem.html>.
 
 [FIPS-197]
-         National Institute of Standards and Technology, "Advanced
-         Encryption Standard (AES)", FIPS PUB 197, November 2001.
+          National Institute of Standards and Technology, "Advanced
+          Encryption Standard (AES)", FIPS PUB 197, November 2001.
 
 [FIPS-46]  National Institute of Standards and Technology, "Data
-           Encryption Standard", FIPS PUB 46-2, December 1993,
-           <http://www.itl.nist.gov/fipspubs/fip46-2.htm>.
+          Encryption Standard", FIPS PUB 46-2, December 1993,
+          <http://www.itl.nist.gov/fipspubs/fip46-2.htm>.
+
+[LatinDances]
+          Aumasson, J., Fischer, S., Khazaei, S., Meier, W., and C.
+          Rechberger, "New Features of Latin Dances: Analysis of
+          Salsa, ChaCha, and Rumba", Dec 2007.
 
 [NaCl]     Bernstein, D., Lange, T., and P. Schwabe, "NaCl:
-           Networking and Cryptography library",
-           <http://nacl.cace-project.eu/index.html>.
+          Networking and Cryptography library",
+          <http://nacl.cace-project.eu/index.html>.
+
+[RFC4868]  Kelly, S. and S. Frankel, "Using HMAC-SHA-256, HMAC-SHA-
+          384, and HMAC-SHA-512 with IPsec", RFC 4868, May 2007.
 
 [RFC5116]  McGrew, D., "An Interface and Algorithms for Authenticated
-           Encryption", RFC 5116, January 2008.
+          Encryption", RFC 5116, January 2008.
 
-[agl-draft]
-         Langley, A. and W. Chang, "ChaCha20 and Poly1305 based
-         Cipher Suites for TLS", draft-agl-tls-chacha20poly1305-04
-         (work in progress), November 2013.
+[RFC5996]  Kaufman, C., Hoffman, P., Nir, Y., and P. Eronen,
+          "Internet Key Exchange Protocol Version 2 (IKEv2)",
+          RFC 5996, September 2010.
+
+[Zhenqing2012]
+          Zhenqing, S., Bin, Z., Dengguo, F., and W. Wenling,
+          "Improved key recovery attacks on reduced-round salsa20
+          and chacha", 2012.
 
 [poly1305_donna]
-         Floodyberry, A., "Poly1305-donna",
-         <https://github.com/floodyberry/poly1305-donna>.
+          Floodyberry, A., "Poly1305-donna",
+          <https://github.com/floodyberry/poly1305-donna>.
 
 [standby-cipher]
-         McGrew, D., Grieco, A., and Y. Sheffer, "Selection of
-         Future Cryptographic Standards",
-         draft-mcgrew-standby-cipher (work in progress).
+          McGrew, D., Grieco, A., and Y. Sheffer, "Selection of
+          Future Cryptographic Standards",
+          draft-mcgrew-standby-cipher (work in progress).
 ```
 
 
@@ -1190,6 +1457,11 @@ Galois Inc
 Email: dylan@galois.com
 ```
 
+# Appendix: Additional test vectors
+
+```cryptol
+// TODO: port these to Cryptol
+```
 # Appendix: Utility functions
 
 ```cryptol
@@ -1225,17 +1497,33 @@ property parseHexString_check =
          "14:15:16:17:18:19:1a:1b:1c:1d:1e:1f.")) ==
     0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 
-
-property AllPropertiesPass =
-    ChaChaQuarterround_passes_test && FirstRow_correct && BuildState_correct
-    && ChaChaStateAfter20_correct && SunscreenBuildState_correct
-    && SunscreenBuildState2_correct && SunscreenBlock1_correct
-    && SunscreenBlock2_correct
-    && SunscreenKeystream_correct SunscreenKeystream
-    && ChaCha_encrypt_sunscreen_correct && ChaCha20_test1
-    && Sunscreen_decrypt_correct && parseHexString_check
-    && Poly1305_passes_test
-    && AeadDecrypt_correct
+property AllPropertiesPass = 
+    ChaChaQuarterround_passes_test &&
+    ChaChaQuarterround_passes_column_test &&
+    FirstRow_correct &&
+    BuildState_correct &&
+    ChaChaStateAfter20_correct &&
+    ChaCha20_test1 &&
+    SunscreenBuildState_correct &&
+    SunscreenBuildState2_correct &&
+    SunscreenBlock1_correct &&
+    SunscreenBlock2_correct &&
+    SunscreenKeystream_correct SunscreenKeystream &&
+    ChaCha_encrypt_sunscreen_correct &&
+    Sunscreen_decrypt_correct &&
+    poly1306Sokay &&
+    polyBlocksOK &&
+    Poly1305_passes_test &&
+    PolyBuildState_correct &&
+    PolyChaCha_correct &&
+    Poly_passes_test &&
+    AeadPolyKeyBuildState_correct &&
+    AeadPolyChaCha_correct &&
+    poly1305Test_correct &&
+    AeadTag_correct &&
+    AeadConstruction_correct &&
+    AeadDecrypt_correct &&
+    parseHexString_check 
 
 ```
 
